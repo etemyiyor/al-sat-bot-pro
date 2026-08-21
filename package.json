@@ -1,0 +1,9 @@
+{
+  "name": "al-sat-bot-pro-local",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node local-server.mjs"
+  }
+}
