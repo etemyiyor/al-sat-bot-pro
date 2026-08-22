@@ -29,8 +29,13 @@ $('importData').onchange=async e=>{
 $('resetData').onclick=()=>{if(confirm('Tüm yerel izleme, paper işlem, uyarı ve fiyat önbelleği silinsin mi?')){[STORE.watch,STORE.trades,STORE.alerts,STORE.prices].forEach(safeRemove);renderAll();toast('Yerel veriler temizlendi')}};
 
 async function refreshQuick(){
-  const box=$('quickQuotes'),cells=box.querySelectorAll('.quickQuote');const targets=[['crypto','BTCUSDT'],['crypto','ETHUSDT'],['us','AAPL'],['bist','THYAO']];
-  for(let i=0;i<targets.length;i++){const [m,s]=targets[i],cell=cells[i],pr=cell.querySelector('.qprice'),sm=cell.querySelector('small');pr.textContent='...';try{const q=await fetchQuote(m,s);pr.textContent=fmt(q.price,m==='crypto'?4:2)+' '+currency(m);pr.className='qprice '+(q.change>=0?'green':'red');sm.textContent=`${q.source} • ${q.change>=0?'+':''}${fmt(q.change,2)}%`}catch(e){pr.textContent='—';pr.className='qprice amber';sm.textContent=e.message}}
+  const box=$('quickQuotes'),cells=box.querySelectorAll('.quickQuote');
+  const targets=[['crypto','BTCUSDT'],['crypto','ETHUSDT'],['us','AAPL'],['bist','XU100'],['bist','THYAO'],['bist','ASELS'],['bist','TUPRS'],['bist','BIMAS']];
+  for(let i=0;i<targets.length;i++){
+    const [m,s]=targets[i],cell=cells[i];if(!cell)continue;const pr=cell.querySelector('.qprice'),sm=cell.querySelector('small');pr.textContent='...';
+    try{const q=await fetchQuote(m,s);pr.textContent=fmt(q.price,m==='crypto'?4:2)+' '+currency(m);pr.className='qprice '+(q.change>=0?'green':'red');sm.textContent=`${q.source} • ${q.change>=0?'+':''}${fmt(q.change,2)}%`}
+    catch(e){pr.textContent='—';pr.className='qprice amber';sm.textContent=e.message}
+  }
 }
 $('refreshQuick').onclick=refreshQuick;
 
