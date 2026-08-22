@@ -34,11 +34,17 @@ function drawChart(rows,t){
 function renderSymbols(){
   const q=$('marketSearch').value.trim().toUpperCase(),arr=listFor(market).filter(s=>s.includes(q));
   $('symbolCount').textContent=arr.length+' sembol';
-  $('symbolGrid').innerHTML=arr.map(s=>`<div class="symbol" data-symbol="${s}"><strong>${s}</strong><span>${marketName(market)}</span></div>`).join('');
+  $('symbolGrid').innerHTML=arr.map(s=>`<div class="symbol" data-symbol="${s}"><strong>${s}</strong><span>${s==='XU100'?'BIST 100 Endeksi':marketName(market)}</span></div>`).join('');
   document.querySelectorAll('.symbol').forEach(el=>el.onclick=()=>openQuote(el.dataset.symbol));
 }
 document.querySelectorAll('#marketTabs [data-market]').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('#marketTabs [data-market]').forEach(x=>x.classList.remove('active'));b.classList.add('active');market=b.dataset.market;$('quoteCard').classList.add('hidden');renderSymbols()
+  document.querySelectorAll('#marketTabs [data-market]').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  market=b.dataset.market;
+  $('marketSearch').value='';
+  $('quoteCard').classList.add('hidden');
+  renderSymbols();
+  if(market==='bist')toast('BIST 100 listesi açıldı: XU100 ve hisseler','ok');
 });
 $('marketSearch').oninput=renderSymbols;
 
