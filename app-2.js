@@ -33,7 +33,7 @@ $('checkAlerts').onclick=async()=>{
   if(!hit)toast('Henüz tetiklenen uyarı yok')
 };
 
-$('analysisMarket').onchange=()=>{const m=$('analysisMarket').value;$('analysisSymbol').value=m==='crypto'?'BTCUSDT':m==='bist'?'THYAO':'AAPL';$('analysisSource').textContent=m==='crypto'?'Kaynak: Binance':m==='bist'?'Kaynak: Twelve Data / XIST':'Kaynak: Twelve Data';$('tvMarket').value=m;$('tvSymbol').value=$('analysisSymbol').value;setTvExchangeVisibility()};
+$('analysisMarket').onchange=()=>{const m=$('analysisMarket').value;$('analysisSymbol').value=m==='crypto'?'BTCUSDT':m==='bist'?'XU100':'AAPL';$('analysisSource').textContent=m==='crypto'?'Kaynak: Binance':m==='bist'?'Kaynak: Twelve Data / XIST':'Kaynak: Twelve Data';$('tvMarket').value=m;$('tvSymbol').value=$('analysisSymbol').value;setTvExchangeVisibility()};
 $('runAnalysis').onclick=async()=>{
   const m=$('analysisMarket').value,s=$('analysisSymbol').value.trim().toUpperCase(),int=$('analysisInterval').value;$('signalLabel').textContent='Yükleniyor';$('signalText').textContent='Veri alınıyor...';
   try{const rows=await fetchSeries(m,s,int,200);if(rows.length<55)throw Error('Teknik analiz için en az 55 veri noktası gerekli');const t=technical(rows);lastAnalysis={m,s,int,rows,t};renderAnalysis(lastAnalysis)}
