@@ -72,7 +72,7 @@ async function loadTvData(){
       ['tvRsi','tvScore','tvEma20','tvEma50','tvMacd','tvAtr'].forEach(id=>$(id).textContent='Yetersiz veri');
     }
     $('tvNote').textContent=m==='bist'
-      ?'BIST sayısal verisi Twelve Data / XIST üzerinden gelir ve abonelik planına göre gecikmeli veya EOD olabilir. TradingView grafiğinin veri seviyesi TradingView tarafına bağlıdır.'
+      ?'BIST sayısal verisi Twelve Data / XIST üzerinden gelir ve abonelik planına göre gecikmeli veya EOD olabilir. XU100 için TradingView grafiği BIST:XU100 sembolünü kullanır.'
       :m==='us'
       ?'ABD sayısal verisi Twelve Data üzerinden gelir. TradingView grafiği ayrı kaynaktan yüklenir; fiyat zamanlaması iki kaynakta aynı olmak zorunda değildir.'
       :'Kripto sayısal verisi Binance public API üzerinden gelir; TradingView grafiği BINANCE sembolünü kullanır.';
@@ -87,7 +87,7 @@ async function loadTvData(){
 }
 $('tvMarket').onchange=()=>{
   const m=$('tvMarket').value;
-  $('tvSymbol').value=m==='crypto'?'BTCUSDT':m==='bist'?'THYAO':'AAPL';
+  $('tvSymbol').value=m==='crypto'?'BTCUSDT':m==='bist'?'XU100':'AAPL';
   setTvExchangeVisibility();
 };
 $('loadTradingView').onclick=loadTvData;
