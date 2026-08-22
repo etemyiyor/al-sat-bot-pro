@@ -22,7 +22,7 @@ function renderTradingViewWidget(m,s,int){
   script.type='text/javascript';
   script.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
   script.async=true;
-  script.text=JSON.stringify({
+  script.innerHTML=JSON.stringify({
     autosize:true,
     symbol:tvs,
     interval:tvMapInterval(int),
@@ -42,6 +42,11 @@ function renderTradingViewWidget(m,s,int){
     support_host:'https://www.tradingview.com'
   });
   container.appendChild(script);
+  setTimeout(()=>{
+    if(!host.querySelector('iframe')){
+      host.innerHTML=`<div style="height:100%;display:grid;place-items:center;padding:20px;text-align:center"><div><div style="margin-bottom:12px;color:var(--muted)">TradingView gömülü grafik yüklenemedi.</div><a class="btn primary" target="_blank" rel="noopener" href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvs)}">TradingView'de ${tvs} aç</a></div></div>`;
+    }
+  },5000);
 }
 async function loadTvData(){
   const m=$('tvMarket').value;
@@ -72,7 +77,7 @@ async function loadTvData(){
       ['tvRsi','tvScore','tvEma20','tvEma50','tvMacd','tvAtr'].forEach(id=>$(id).textContent='Yetersiz veri');
     }
     $('tvNote').textContent=m==='bist'
-      ?'BIST sayısal verisi Twelve Data / XIST üzerinden gelir ve abonelik planına göre gecikmeli veya EOD olabilir. XU100 için TradingView grafiği BIST:XU100 sembolünü kullanır.'
+      ?'BIST sayısal verisi Twelve Data / XIST üzerinden gelir ve abonelik planına göre gecikmeli veya EOD olabilir. XU100 için TradingView grafiği BIST:XU100 sembolünü kullanır. TradingView grafiği Twelve Data hatasından bağımsız yüklenir.'
       :m==='us'
       ?'ABD sayısal verisi Twelve Data üzerinden gelir. TradingView grafiği ayrı kaynaktan yüklenir; fiyat zamanlaması iki kaynakta aynı olmak zorunda değildir.'
       :'Kripto sayısal verisi Binance public API üzerinden gelir; TradingView grafiği BINANCE sembolünü kullanır.';
