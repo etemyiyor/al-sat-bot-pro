@@ -11,13 +11,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "_site"
 INDEX = ROOT / "index.html"
-POPULAR = {"THYAO", "ASELS", "TUPRS", "FROTO", "GARAN", "EREGL", "KCHOL", "BIMAS"}
 UA = "Mozilla/5.0 (GitHub Actions; AL-SAT BOT PRO)"
 
 
 def ticker(symbol: str) -> str:
     symbol = symbol.strip().upper()
-    return "XU100.IS" if symbol in {"XU100", "BIST100"} else f"{symbol}.IS"
+    return "XU100.IS" if symbol in {"XU100", "BIST100", "BIST-100"} else f"{symbol}.IS"
 
 
 def yahoo_rows(symbol: str, range_: str, interval: str) -> list[dict]:
@@ -26,10 +25,13 @@ def yahoo_rows(symbol: str, range_: str, interval: str) -> list[dict]:
         f"{ticker(symbol)}?range={range_}&interval={interval}"
         "&includePrePost=false&events=div%2Csplits"
     )
-    last_error = None
+    last_error: Exception | None = None
     for attempt in range(3):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": UA, "Accept": "application/json"},
+            )
             with urllib.request.urlopen(req, timeout=25) as response:
                 payload = json.load(response)
             result = (payload.get("chart", {}).get("result") or [None])[0]
@@ -37,7 +39,7 @@ def yahoo_rows(symbol: str, range_: str, interval: str) -> list[dict]:
                 raise RuntimeError(payload.get("chart", {}).get("error") or "Yahoo result empty")
             quote = ((result.get("indicators") or {}).get("quote") or [{}])[0]
             timestamps = result.get("timestamp") or []
-            rows = []
+            rows: list[dict] = []
             for i, ts in enumerate(timestamps):
                 try:
                     o = quote.get("open", [])[i]
@@ -49,17 +51,22 @@ def yahoo_rows(symbol: str, range_: str, interval: str) -> list[dict]:
                     continue
                 if any(x is None for x in (o, h, l, c)):
                     continue
-                rows.append({
-                    "time": int(ts) * 1000,
-                    "open": float(o), "high": float(h), "low": float(l),
-                    "close": float(c), "volume": float(v),
-                })
+                rows.append(
+                    {
+                        "time": int(ts) * 1000,
+                        "open": float(o),
+                        "high": float(h),
+                        "low": float(l),
+                        "close": float(c),
+                        "volume": float(v),
+                    }
+                )
             if not rows:
                 raise RuntimeError("Yahoo returned no OHLC rows")
             return rows
         except Exception as exc:
             last_error = exc
-            time.sleep(1.2 * (attempt + 1))
+            time.sleep(1.1 * (attempt + 1))
     raise RuntimeError(f"{symbol}: {last_error}")
 
 
@@ -67,55 +74,69 @@ def write_json(symbol: str, filename: str, rows: list[dict]) -> None:
     dest = OUT / "data" / "bist" / symbol
     dest.mkdir(parents=True, exist_ok=True)
     (dest / filename).write_text(
-        json.dumps({
-            "symbol": symbol,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "rows": rows,
-        }, ensure_ascii=False, separators=(",", ":")),
+        json.dumps(
+            {
+                "symbol": symbol,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "rows": rows,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
         encoding="utf-8",
     )
 
 
+def extract_bist_symbols(html: str) -> list[str]:
+    match = re.search(r"const\s+PRESETS=\{bist:\[([^\]]+)\]", html)
+    if match:
+        symbols = re.findall(r"['\"]([^'\"]+)['\"]", match.group(1))
+        if symbols:
+            return symbols
+
+    match = re.search(r"const\s+BIST=`([^`]*)`\.split\(['\"]\s*['\"]\)", html)
+    if match:
+        symbols = [s for s in match.group(1).split() if s]
+        if symbols:
+            return symbols
+
+    raise RuntimeError("BIST symbol list not found in index.html")
+
+
 def patch_index(html: str) -> str:
-    helper = r'''
-async function fetchGithubBistSeries(s,interval='1d',size=180){
-  s=(s||'').trim().toUpperCase().replace(/\.IS$/,'');
-  if(['BIST100','BIST-100','BIST_100'].includes(s))s='XU100';
-  let file='1d.json',aggregate=null;
-  if(interval==='15m')file='15m.json';
-  else if(interval==='1h')file='1h.json';
-  else if(interval==='4h'){file='1h.json';aggregate=4*60*60*1000}
-  else if(interval==='1w'){file='1d.json';aggregate=7*24*60*60*1000}
-  else if(interval==='1mo'){file='1d.json';aggregate=30*24*60*60*1000}
-  const load=async(name)=>{
-    const url=new URL(`./data/bist/${encodeURIComponent(s)}/${name}`,document.baseURI);
-    const r=await fetch(url.toString()+`?v=${Date.now()}`,{cache:'no-store'});
-    if(!r.ok)throw Error(`GitHub BIST veri dosyası yok (${r.status})`);
-    const j=await r.json();
-    return Array.isArray(j.rows)?j.rows:[];
-  };
-  let rows=[];
-  try{rows=await load(file)}catch(e){if(file!=='1d.json')rows=await load('1d.json');else throw e}
-  const out=rows.map(x=>({time:+x.time,open:+x.open,high:+x.high,low:+x.low,close:+x.close,volume:+x.volume||0})).filter(x=>Number.isFinite(x.close));
-  const finalRows=aggregate?aggregateBars(out,aggregate):out;
-  if(!finalRows.length)throw Error('GitHub BIST veri dosyası boş');
-  return finalRows.slice(-Math.min(size,500));
-}
-async function fetchBistSeries(s,interval='1d',size=180){
-  try{return await fetchGithubBistSeries(s,interval,size)}
-  catch(githubErr){
-    try{return await fetchYahooBistSeries(s,interval,size)}
-    catch(yahooErr){throw Error(`BIST verisi alınamadı. GitHub: ${githubErr.message} • Yedek: ${yahooErr.message}`)}
+    replacement = r'''async function publicJson(url){
+  if(String(url).includes('query1.finance.yahoo.com/v8/finance/chart/')){
+    try{
+      const u=new URL(url),raw=decodeURIComponent(u.pathname.split('/').pop()||'').toUpperCase();
+      let symbol=raw.replace(/\.IS$/,'');if(symbol==='BIST100')symbol='XU100';
+      const interval=(u.searchParams.get('interval')||'1d').toLowerCase();
+      let file=interval==='15m'?'15m.json':(interval==='60m'||interval==='1h')?'1h.json':'1d.json';
+      const local=new URL(`./data/bist/${encodeURIComponent(symbol)}/${file}`,document.baseURI);
+      let r=await fetch(local.toString()+`?v=${Date.now()}`,{cache:'no-store'});
+      if(!r.ok&&file!=='1d.json'){
+        file='1d.json';
+        const fallback=new URL(`./data/bist/${encodeURIComponent(symbol)}/${file}`,document.baseURI);
+        r=await fetch(fallback.toString()+`?v=${Date.now()}`,{cache:'no-store'});
+      }
+      if(!r.ok)throw Error(`GitHub BIST cache HTTP ${r.status}`);
+      const payload=await r.json(),rows=Array.isArray(payload.rows)?payload.rows:[];
+      if(!rows.length)throw Error('GitHub BIST cache boş');
+      return {chart:{result:[{timestamp:rows.map(x=>Math.floor((+x.time)/1000)),indicators:{quote:[{
+        open:rows.map(x=>+x.open),high:rows.map(x=>+x.high),low:rows.map(x=>+x.low),close:rows.map(x=>+x.close),volume:rows.map(x=>+x.volume||0)
+      }]}}],error:null}};
+    }catch(cacheErr){console.warn('GitHub BIST cache fallback:',cacheErr)}
   }
-}
-'''
-    needle = "async function fetchYahooBistSeries(s,interval='1d',size=180){"
-    if "function fetchGithubBistSeries" not in html:
-        html = html.replace(needle, helper + "\n" + needle, 1)
-    html = html.replace("const rows=await fetchYahooBistSeries(s,'1d',8);", "const rows=await fetchBistSeries(s,'1d',8);")
-    html = html.replace("return await fetchYahooBistSeries(s,interval,size);", "return await fetchBistSeries(s,interval,size);")
-    html = html.replace("Yahoo Finance / BIST • gecikmeli", "GitHub Pages BIST • gecikmeli")
-    html = html.replace("Yahoo Finance / BIST", "GitHub Pages / BIST")
+  const arr=[url,'https://corsproxy.io/?url='+encodeURIComponent(url),'https://api.allorigins.win/raw?url='+encodeURIComponent(url)];let e;
+  for(const u of arr){try{const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);return await r.json()}catch(x){e=x}}
+  throw Error('BIST veri bağlantısı kurulamadı: '+(e?.message||''));
+}'''
+
+    pattern = re.compile(r"async function publicJson\(url\)\{.*?\}\nasync function fetchQuote", re.S)
+    html, count = pattern.subn(replacement + "\nasync function fetchQuote", html, count=1)
+    if count != 1:
+        raise RuntimeError("publicJson function could not be patched")
+
+    html = html.replace("Yahoo Finance / BIST • gecikmeli", "GitHub Pages / BIST • gecikmeli")
     html = html.replace("Yahoo / BIST", "GitHub Pages / BIST")
     html = html.replace("BIST: Yahoo Finance gecikmeli", "BIST: GitHub Pages veri önbelleği")
     html = html.replace("BIST • Yahoo", "BIST • GitHub Pages")
@@ -128,34 +149,39 @@ def main() -> None:
     OUT.mkdir(parents=True)
 
     html = INDEX.read_text(encoding="utf-8")
-    match = re.search(r"const BIST=`([^`]*)`\.split\(' '\)", html)
-    if not match:
-        raise SystemExit("BIST symbol list not found in index.html")
-    symbols = [s for s in match.group(1).split() if s]
+    symbols = extract_bist_symbols(html)
+    failures: list[str] = []
 
-    failures = []
     for idx, symbol in enumerate(symbols, 1):
-        try:
-            write_json(symbol, "1d.json", yahoo_rows(symbol, "1y", "1d"))
-            if symbol in POPULAR:
-                write_json(symbol, "1h.json", yahoo_rows(symbol, "3mo", "60m"))
-                write_json(symbol, "15m.json", yahoo_rows(symbol, "1mo", "15m"))
-        except Exception as exc:
-            failures.append(str(exc))
-        if idx % 10 == 0:
-            print(f"BIST cache: {idx}/{len(symbols)}")
-        time.sleep(0.12)
+        for filename, range_, interval in (
+            ("1d.json", "1y", "1d"),
+            ("1h.json", "3mo", "60m"),
+            ("15m.json", "1mo", "15m"),
+        ):
+            try:
+                write_json(symbol, filename, yahoo_rows(symbol, range_, interval))
+            except Exception as exc:
+                failures.append(f"{symbol}/{filename}: {exc}")
+        print(f"BIST cache: {idx}/{len(symbols)} {symbol}")
+        time.sleep(0.15)
 
     (OUT / "index.html").write_text(patch_index(html), encoding="utf-8")
-    (OUT / "bist-status.json").write_text(json.dumps({
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "symbols_total": len(symbols),
-        "failures": failures,
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    (OUT / "bist-status.json").write_text(
+        json.dumps(
+            {
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "symbols_total": len(symbols),
+                "failures": failures,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     (OUT / ".nojekyll").write_text("", encoding="utf-8")
     print(f"Built Pages site. Symbols={len(symbols)} failures={len(failures)}")
     if failures:
-        print("\n".join(failures[:20]))
+        print("\n".join(failures[:30]))
 
 
 if __name__ == "__main__":
