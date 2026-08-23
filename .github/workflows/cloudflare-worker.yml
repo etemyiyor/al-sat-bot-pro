@@ -7,9 +7,14 @@ on:
     paths:
       - "cloudflare-worker/**"
       - ".github/workflows/cloudflare-worker.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "cloudflare-worker/**"
+      - ".github/workflows/cloudflare-worker.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   deploy:
@@ -18,9 +23,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify Cloudflare secrets
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CF_TOKEN:-}" ]; then
+            echo "CLOUDFLARE_API_TOKEN is missing"
+            exit 1
+          fi
+          if [ -z "${CF_ACCOUNT:-}" ]; then
+            echo "CLOUDFLARE_ACCOUNT_ID is missing"
+            exit 1
+          fi
+          echo "Cloudflare secrets are configured"
+
       - name: Deploy Worker
         id: deploy
-        continue-on-error: true
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -28,52 +48,9 @@ jobs:
           workingDirectory: cloudflare-worker
           command: deploy
 
-      - name: Record deploy result
-        if: always()
+      - name: Print deployment URL
+        if: success()
         env:
-          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          set -euo pipefail
-
-          token_set=false
-          account_set=false
-          [ -n "${CF_TOKEN:-}" ] && token_set=true
-          [ -n "${CF_ACCOUNT:-}" ] && account_set=true
-
-          url="${DEPLOYMENT_URL:-}"
-          url="$(printf '%s' "$url" | sed 's/ .*//' | sed 's/[),]$//')"
-          if [ -n "$url" ] && [[ "$url" != http://* ]] && [[ "$url" != https://* ]]; then
-            url="https://$url"
-          fi
-
-          {
-            echo "deploy_outcome=${DEPLOY_OUTCOME:-unknown}"
-            echo "cloudflare_api_token_set=$token_set"
-            echo "cloudflare_account_id_set=$account_set"
-            if [ -n "$url" ]; then
-              echo "deployment_url=$url"
-            else
-              echo "deployment_url=not_returned"
-            fi
-          } > cloudflare-deploy-status.txt
-
-          if [ -n "$url" ]; then
-            printf '%s\n' "$url" > cloudflare-deploy-url.txt
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cloudflare-deploy-status.txt
-          [ -f cloudflare-deploy-url.txt ] && git add cloudflare-deploy-url.txt
-          if ! git diff --cached --quiet; then
-            git commit -m "Record Cloudflare deploy status"
-            git pull --rebase origin main
-            git push origin HEAD:main
-          fi
-
-          if [ "${DEPLOY_OUTCOME:-failure}" != "success" ]; then
-            exit 1
-          fi
+          echo "deployment_url=${DEPLOYMENT_URL}"
