@@ -3,3 +3,7 @@ live_url=not_available
 d1_database=tradex-ai-auth
 d1_database_id=not_available
 health_ok=false
+failure_stage=credentials
+error_begin
+CLOUDFLARE_API_TOKEN is missing
+error_end
