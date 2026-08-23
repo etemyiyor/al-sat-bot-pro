@@ -4,6 +4,10 @@
   "functions": {
     "api/*.js": {
       "runtime": "nodejs20.x"
+    },
+    "api/bloomberg/*.js": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 10
     }
   },
   "headers": [
@@ -12,6 +16,12 @@
       "headers": [
         {"key": "X-Content-Type-Options", "value": "nosniff"},
         {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"}
+      ]
+    },
+    {
+      "source": "/api/bloomberg/(.*)",
+      "headers": [
+        {"key": "Cache-Control", "value": "no-store"}
       ]
     }
   ]
