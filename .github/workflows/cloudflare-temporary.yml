@@ -1,12 +1,18 @@
 name: Temporary Cloudflare Deploy
 
 on:
+  workflow_dispatch:
   push:
     branches: ["main"]
     paths:
       - ".github/workflows/cloudflare-temporary.yml"
       - "cloudflare-worker/**"
-  workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/cloudflare-temporary.yml"
+      - "cloudflare-worker/**"
+      - "CF_TEMP_TRIGGER.txt"
 
 permissions:
   contents: write
@@ -34,13 +40,10 @@ jobs:
           CLAIM_URL="$(grep -Eo 'https://dash\.cloudflare\.com/claim-preview\?claimToken=[^[:space:]]+' "$OUT" | tail -n1 | sed 's/[),]$//' || true)"
 
           if [ "$CODE" -ne 0 ] || [ -z "$LIVE_URL" ] || [ -z "$CLAIM_URL" ]; then
-            {
-              echo "status=failure"
-              echo "exit_code=$CODE"
-              echo "live_url=${LIVE_URL:-not_found}"
-              echo "claim_url=not_recorded"
-            } > ../cloudflare-temporary-status.txt
-            sed -E 's#https://dash\.cloudflare\.com/claim-preview\?claimToken=[^[:space:]]+#CLAIM_URL_REDACTED#g' "$OUT" | tail -n 80 > ../cloudflare-temporary-error.txt
+            echo "TEMP_DEPLOY_STATUS=failure"
+            echo "TEMP_DEPLOY_EXIT_CODE=$CODE"
+            echo "TEMP_LIVE_URL=${LIVE_URL:-not_found}"
+            sed -E 's#https://dash\.cloudflare\.com/claim-preview\?claimToken=[^[:space:]]+#CLAIM_URL_REDACTED#g' "$OUT" | tail -n 60
             exit 1
           fi
 
@@ -59,25 +62,6 @@ jobs:
           printf '%s' "$CLAIM_URL" | openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/claim-public.pem" -pkeyopt rsa_padding_mode:oaep -out "$RUNNER_TEMP/claim.bin"
           CLAIM_B64="$(base64 -w0 "$RUNNER_TEMP/claim.bin")"
 
-          {
-            echo "status=success"
-            echo "live_url=$LIVE_URL"
-            echo "claim_encrypted_b64=$CLAIM_B64"
-            echo "claim_window_minutes=60"
-          } > ../cloudflare-temporary-result.txt
-
-      - name: Save deployment result
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          [ -f cloudflare-temporary-result.txt ] && git add cloudflare-temporary-result.txt
-          [ -f cloudflare-temporary-status.txt ] && git add cloudflare-temporary-status.txt
-          [ -f cloudflare-temporary-error.txt ] && git add cloudflare-temporary-error.txt
-          if ! git diff --cached --quiet; then
-            git commit -m "Record temporary Cloudflare deployment"
-            git pull --rebase origin main
-            git push origin HEAD:main
-          fi
+          echo "TEMP_DEPLOY_STATUS=success"
+          echo "TEMP_LIVE_URL=$LIVE_URL"
+          echo "TEMP_CLAIM_ENCRYPTED_B64=$CLAIM_B64"
