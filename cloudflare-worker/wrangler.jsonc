@@ -6,7 +6,7 @@
   "vars": {
     "BLOOMBERG_MODE": "gateway",
     "BRAND_NAME": "TradeX AI",
-    "DEPLOY_TRIGGER": "2026-08-23T18:51+03:00"
+    "DEPLOY_TRIGGER": "2026-08-23T18:56+03:00"
   },
   "assets": {
     "directory": "./public",
