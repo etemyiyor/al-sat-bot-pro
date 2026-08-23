@@ -1,1 +1,1 @@
-Deploy TradeX AI normal login v39.
+Deploy TradeX AI account creation fix v40.
