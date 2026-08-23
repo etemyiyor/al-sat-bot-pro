@@ -1,0 +1,75 @@
+name: TradeX Admin Temporary Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/cloudflare-admin-temporary.yml"
+      - "cloudflare-worker/src/billing.js"
+      - "cloudflare-worker/src/admin-config.js"
+      - "cloudflare-worker/ADMIN_DEPLOY_TRIGGER.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy admin-secure temporary Worker
+        working-directory: cloudflare-worker
+        shell: bash
+        env:
+          ADMIN_ACCESS_CODE: ${{ secrets.ADMIN_ACCESS_CODE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ADMIN_ACCESS_CODE:-}" ]; then
+            echo "status=failure" > ../cloudflare-admin-result.txt
+            echo "stage=admin_secret_missing" >> ../cloudflare-admin-result.txt
+            exit 1
+          fi
+
+          ADMIN_HASH="$(printf '%s' "$ADMIN_ACCESS_CODE" | sha256sum | awk '{print $1}')"
+          ADMIN_TOKEN_SECRET="$(printf 'tradex-admin-token-v1:%s' "$ADMIN_ACCESS_CODE" | sha256sum | awk '{print $1}')"
+          OUT="$RUNNER_TEMP/tradex-admin-deploy.out"
+
+          set +e
+          npx --yes wrangler@4 deploy --temporary \
+            --var "ADMIN_ACCESS_CODE_HASH:$ADMIN_HASH" \
+            --var "ADMIN_TOKEN_SECRET:$ADMIN_TOKEN_SECRET" > "$OUT" 2>&1
+          CODE=$?
+          set -e
+
+          LIVE_URL="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' "$OUT" | tail -n1 || true)"
+          if [ "$CODE" -ne 0 ] || [ -z "$LIVE_URL" ]; then
+            echo "status=failure" > ../cloudflare-admin-result.txt
+            echo "stage=deploy" >> ../cloudflare-admin-result.txt
+            echo "exit_code=$CODE" >> ../cloudflare-admin-result.txt
+            exit 1
+          fi
+
+          CONFIG="$(curl -fsS "${LIVE_URL%/}/billing/config")"
+          ADMIN_OK="$(node -e 'const d=JSON.parse(process.argv[1]);process.stdout.write(d.adminConfigured?"true":"false")' "$CONFIG")"
+          {
+            echo "status=success"
+            echo "live_url=$LIVE_URL"
+            echo "admin_configured=$ADMIN_OK"
+          } > ../cloudflare-admin-result.txt
+
+      - name: Save admin deployment result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          [ -f cloudflare-admin-result.txt ] && git add cloudflare-admin-result.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Record admin-secure temporary deployment"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
