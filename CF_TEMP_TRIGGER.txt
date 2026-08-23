@@ -1,1 +1,1 @@
-Deploy TradeX AI functional market data 34.
+Deploy TradeX AI direct terminal 35.
