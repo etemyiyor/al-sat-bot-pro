@@ -1,1 +1,1 @@
-Deploy TradeX AI account fix 33.
+Deploy TradeX AI functional market data 34.
