@@ -54,23 +54,20 @@ jobs:
         env:
           DB_NAME: tradex-ai-auth
         run: |
-          set -u
+          set -euo pipefail
           echo "d1_list" > /tmp/cf_stage
-          if ! npm exec --yes wrangler@latest -- d1 list --json > /tmp/d1.json 2> /tmp/d1.err; then
-            sed -E 's/(Bearer|token|api[_ -]?token)[^ ]*/\1 [REDACTED]/Ig' /tmp/d1.err | tail -n 40 > /tmp/cf_error
+          npm exec --yes wrangler@latest -- d1 list --json > /tmp/d1.json 2> /tmp/d1.err || {
+            tail -n 40 /tmp/d1.err > /tmp/cf_error
             exit 1
-          fi
+          }
           DB_ID=$(node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync('/tmp/d1.json','utf8'));const d=a.find(x=>x.name===process.env.DB_NAME);if(d)process.stdout.write(d.uuid||d.id||'')")
           if [ -z "$DB_ID" ]; then
             echo "d1_create" > /tmp/cf_stage
-            if ! npm exec --yes wrangler@latest -- d1 create "$DB_NAME" > /tmp/d1-create.out 2> /tmp/d1-create.err; then
-              cat /tmp/d1-create.err /tmp/d1-create.out | sed -E 's/(Bearer|token|api[_ -]?token)[^ ]*/\1 [REDACTED]/Ig' | tail -n 40 > /tmp/cf_error
+            npm exec --yes wrangler@latest -- d1 create "$DB_NAME" > /tmp/d1-create.out 2> /tmp/d1-create.err || {
+              cat /tmp/d1-create.err /tmp/d1-create.out | tail -n 40 > /tmp/cf_error
               exit 1
-            fi
-            if ! npm exec --yes wrangler@latest -- d1 list --json > /tmp/d1.json 2> /tmp/d1.err; then
-              cat /tmp/d1.err | tail -n 40 > /tmp/cf_error
-              exit 1
-            fi
+            }
+            npm exec --yes wrangler@latest -- d1 list --json > /tmp/d1.json 2> /tmp/d1.err
             DB_ID=$(node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync('/tmp/d1.json','utf8'));const d=a.find(x=>x.name===process.env.DB_NAME);if(!d)process.exit(2);process.stdout.write(d.uuid||d.id||'')")
           fi
           echo "db_id=$DB_ID" >> "$GITHUB_OUTPUT"
@@ -82,27 +79,24 @@ jobs:
           fs.writeFileSync('wrangler.deploy.jsonc',JSON.stringify(cfg,null,2));
           NODE
           echo "d1_migrate" > /tmp/cf_stage
-          if ! npm exec --yes wrangler@latest -- d1 execute "$DB_NAME" --remote --file=migrations/0001_auth.sql --yes > /tmp/d1-migrate.out 2> /tmp/d1-migrate.err; then
-            cat /tmp/d1-migrate.err /tmp/d1-migrate.out | tail -n 40 > /tmp/cf_error
+          npm exec --yes wrangler@latest -- d1 migrations apply "$DB_NAME" --remote --config wrangler.deploy.jsonc > /tmp/d1-migrate.out 2> /tmp/d1-migrate.err || {
+            cat /tmp/d1-migrate.err /tmp/d1-migrate.out | tail -n 60 > /tmp/cf_error
             exit 1
-          fi
+          }
           echo "d1_ok" > /tmp/cf_stage
           echo "none" > /tmp/cf_error
 
-      - name: Sync admin access secret
+      - name: Sync optional admin access secret
         if: success() && github.event_name != 'pull_request'
         working-directory: cloudflare-worker
         env:
           ADMIN_ACCESS_CODE: ${{ secrets.ADMIN_ACCESS_CODE }}
         run: |
           set -euo pipefail
-          if [ -z "${ADMIN_ACCESS_CODE:-}" ]; then
-            echo "admin_secret_missing" > /tmp/cf_stage
-            echo "ADMIN_ACCESS_CODE is missing" > /tmp/cf_error
-            exit 1
+          if [ -n "${ADMIN_ACCESS_CODE:-}" ]; then
+            printf '%s' "$ADMIN_ACCESS_CODE" | npm exec --yes wrangler@latest -- secret put ADMIN_ACCESS_CODE --config wrangler.deploy.jsonc >/tmp/admin-secret.out 2>/tmp/admin-secret.err
           fi
-          printf '%s' "$ADMIN_ACCESS_CODE" | npm exec --yes wrangler@latest -- secret put ADMIN_ACCESS_CODE --config wrangler.deploy.jsonc >/tmp/admin-secret.out 2>/tmp/admin-secret.err
-          echo "admin_secret_ok" > /tmp/cf_stage
+          echo "admin_secret_optional" > /tmp/cf_stage
           echo "none" > /tmp/cf_error
 
       - name: Deploy Worker
