@@ -25,7 +25,9 @@ async function callUpstream(env, path, params = {}) {
   const base = String(env.BLOOMBERG_UPSTREAM_URL || '').replace(/\/$/, '');
   if (!base) throw Object.assign(new Error('Bloomberg upstream yapılandırılmadı. BLOOMBERG_UPSTREAM_URL gerekli.'), { status: 503 });
   const u = new URL(base + path);
-  for (const [k,v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') u.searchParams.set(k, String(v));
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') u.searchParams.set(k, String(v));
+  }
   const headers = { Accept: 'application/json' };
   if (env.BLOOMBERG_UPSTREAM_TOKEN) headers.Authorization = `Bearer ${env.BLOOMBERG_UPSTREAM_TOKEN}`;
   const r = await fetch(u, { headers, cf: { cacheTtl: 0, cacheEverything: false } });
@@ -38,19 +40,25 @@ async function callUpstream(env, path, params = {}) {
 
 export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    const isApiPath = path === '/health' || path === '/quote' || path === '/series';
+
+    if (!isApiPath) {
+      return env.ASSETS.fetch(request);
+    }
+
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request) });
     if (request.method !== 'GET') return json(request, { ok: false, error: 'Method not allowed' }, 405);
 
-    const url = new URL(request.url);
-    const path = url.pathname.replace(/\/+$/, '') || '/';
-
     try {
-      if (path === '/' || path === '/health') {
+      if (path === '/health') {
         return json(request, {
           ok: true,
           service: 'AL-SAT BOT PRO Bloomberg Worker',
           upstreamConfigured: !!env.BLOOMBERG_UPSTREAM_URL,
           mode: env.BLOOMBERG_MODE || 'gateway',
+          assets: true,
           time: new Date().toISOString()
         });
       }
