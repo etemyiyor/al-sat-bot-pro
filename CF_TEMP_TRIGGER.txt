@@ -1,1 +1,1 @@
-Deploy TradeX AI account creation fix v40.
+Deploy TradeX AI device-bound admin v41.
