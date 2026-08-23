@@ -82,7 +82,7 @@ async function getSessionUser(request, env) {
   return { id: row.id, username: row.username, email: row.email || null };
 }
 
-async function createSession(request, env, userId, remember = true) {
+async function createSession(env, userId, remember = true) {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const token = bytesToB64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
   const tokenHash = await sha256(token);
@@ -94,7 +94,7 @@ async function createSession(request, env, userId, remember = true) {
 }
 
 async function authRegister(request, env) {
-  if (!env.DB) return json(request, { ok: false, error: 'D1 veritabanı bağlı değil' }, 503);
+  if (!env.DB) return json(request, { ok: false, error: 'Yerel giriş modu aktif', localAuth: true }, 503);
   const body = await requestBody(request);
   const username = String(body.username || '').trim();
   const email = String(body.email || '').trim().toLowerCase();
@@ -113,12 +113,12 @@ async function authRegister(request, env) {
   const now = Date.now();
   await env.DB.prepare('INSERT INTO users (id, username, email, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, username, email || null, passwordHash, bytesToB64(salt), now).run();
-  const session = await createSession(request, env, id, true);
+  const session = await createSession(env, id, true);
   return json(request, { ok: true, user: { id, username, email: email || null } }, 201, { 'Set-Cookie': cookie(SESSION_COOKIE, session.token, session.ttl) });
 }
 
 async function authLogin(request, env) {
-  if (!env.DB) return json(request, { ok: false, error: 'D1 veritabanı bağlı değil' }, 503);
+  if (!env.DB) return json(request, { ok: false, error: 'Yerel giriş modu aktif', localAuth: true }, 503);
   const body = await requestBody(request);
   const identity = String(body.identity || '').trim();
   const password = String(body.password || '');
@@ -131,7 +131,7 @@ async function authLogin(request, env) {
   const actual = await hashPassword(password, b64ToBytes(user.password_salt));
   if (actual !== user.password_hash) return json(request, { ok: false, error: 'Kullanıcı adı/e-posta veya şifre hatalı' }, 401);
 
-  const session = await createSession(request, env, user.id, remember);
+  const session = await createSession(env, user.id, remember);
   await env.DB.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').bind(Date.now(), user.id).run();
   return json(request, { ok: true, user: { id: user.id, username: user.username, email: user.email || null } }, 200, { 'Set-Cookie': cookie(SESSION_COOKIE, session.token, session.ttl) });
 }
@@ -146,7 +146,7 @@ async function authLogout(request, env) {
 
 async function callUpstream(env, path, params = {}) {
   const base = String(env.BLOOMBERG_UPSTREAM_URL || '').replace(/\/$/, '');
-  if (!base) throw Object.assign(new Error('Bloomberg upstream yapılandırılmadı. BLOOMBERG_UPSTREAM_URL gerekli.'), { status: 503 });
+  if (!base) throw Object.assign(new Error('Piyasa veri kaynağı henüz yapılandırılmadı.'), { status: 503 });
   const u = new URL(base + path);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== '') u.searchParams.set(k, String(v));
@@ -157,7 +157,7 @@ async function callUpstream(env, path, params = {}) {
   const text = await r.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { message: text || 'Geçersiz upstream yanıtı' }; }
-  if (!r.ok) throw Object.assign(new Error(data.message || data.error || `Bloomberg upstream hatası (${r.status})`), { status: r.status });
+  if (!r.ok) throw Object.assign(new Error(data.message || data.error || `Piyasa veri kaynağı hatası (${r.status})`), { status: r.status });
   return data.data ?? data;
 }
 
@@ -177,6 +177,8 @@ export default {
           service: 'TradeX AI Worker',
           upstreamConfigured: !!env.BLOOMBERG_UPSTREAM_URL,
           authDatabaseConfigured: !!env.DB,
+          authMode: env.DB ? 'd1' : 'local',
+          apiAuthRequired: !!env.DB,
           mode: env.BLOOMBERG_MODE || 'gateway',
           assets: true,
           time: new Date().toISOString()
@@ -187,16 +189,20 @@ export default {
       if (path === '/auth/login' && request.method === 'POST') return authLogin(request, env);
       if (path === '/auth/logout' && request.method === 'POST') return authLogout(request, env);
       if (path === '/auth/me' && request.method === 'GET') {
-        if (!env.DB) return json(request, { ok: false, error: 'D1 veritabanı bağlı değil' }, 503);
+        if (!env.DB) return json(request, { ok: false, error: 'Yerel giriş modu aktif', localAuth: true }, 503);
         const user = await getSessionUser(request, env);
         return user ? json(request, { ok: true, user }) : json(request, { ok: false, error: 'Oturum yok' }, 401);
       }
 
       if (path.startsWith('/auth/')) return json(request, { ok: false, error: 'Method not allowed' }, 405);
-
       if (request.method !== 'GET') return json(request, { ok: false, error: 'Method not allowed' }, 405);
-      const user = await getSessionUser(request, env);
-      if (!user) return json(request, { ok: false, error: 'Giriş gerekli' }, 401);
+
+      // D1 yoksa frontend yerel güvenli giriş kullanır. Bu durumda API'yi
+      // sunucu oturumuna zorlamıyoruz; D1 varsa normal oturum doğrulaması sürer.
+      if (env.DB) {
+        const user = await getSessionUser(request, env);
+        if (!user) return json(request, { ok: false, error: 'Giriş gerekli' }, 401);
+      }
 
       if (path === '/quote') {
         const market = url.searchParams.get('market');
