@@ -2,7 +2,7 @@ import app from './index.js';
 
 const SESSION_COOKIE='asbp_session';
 const SESSION_SECONDS=60*60*24*30;
-const VERSION='auth-news-20260824-0030';
+const VERSION='auth-news-fallback-20260824-0042';
 const te=new TextEncoder();
 
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers}});
@@ -19,20 +19,23 @@ function stripHtml(s=''){return decodeXml(String(s).replace(/<[^>]*>/g,' ').repl
 function tag(block,name){const m=String(block).match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`,'i'));return m?decodeXml(m[1]).trim():''}
 function shortText(s,max=180){const x=stripHtml(s);return x.length>max?x.slice(0,max-1).trimEnd()+'…':x}
 function timeLabel(date){const ms=Date.now()-date.getTime();if(!Number.isFinite(ms))return '';const min=Math.max(0,Math.floor(ms/60000));if(min<60)return `${min} dk önce`;const h=Math.floor(min/60);if(h<24)return `${h} sa önce`;const d=Math.floor(h/24);return `${d} gün önce`}
-function parseRss(xml,category){const items=[];const blocks=String(xml).match(/<item>[\s\S]*?<\/item>/gi)||[];for(const b of blocks){const title=stripHtml(tag(b,'title')),url=tag(b,'link'),pub=tag(b,'pubDate'),source=stripHtml(tag(b,'source'))||'Google News',description=tag(b,'description');if(!title||!url)continue;const dt=new Date(pub||Date.now());items.push({title,url,source,category,publishedAt:Number.isFinite(dt.getTime())?dt.toISOString():new Date().toISOString(),timeLabel:timeLabel(dt),summary:shortText(description,180)})}return items}
-async function rssSearch(q,category){const u=new URL('https://news.google.com/rss/search');u.searchParams.set('q',q);u.searchParams.set('hl','tr');u.searchParams.set('gl','TR');u.searchParams.set('ceid','TR:tr');const r=await fetch(u.toString(),{headers:{'Accept':'application/rss+xml, application/xml, text/xml','User-Agent':'TradeXAI/1.0'},cf:{cacheTtl:300,cacheEverything:true}});if(!r.ok)throw new Error(`Haber kaynağı yanıt vermedi (${r.status})`);return parseRss(await r.text(),category)}
+function parseRss(xml,category,defaultSource='Haber'){const items=[];const blocks=String(xml).match(/<item>[\s\S]*?<\/item>/gi)||[];for(const b of blocks){const title=stripHtml(tag(b,'title')),url=tag(b,'link'),pub=tag(b,'pubDate'),source=stripHtml(tag(b,'source'))||defaultSource,description=tag(b,'description');if(!title||!url)continue;const dt=new Date(pub||Date.now());items.push({title,url,source,category,publishedAt:Number.isFinite(dt.getTime())?dt.toISOString():new Date().toISOString(),timeLabel:timeLabel(dt),summary:shortText(description,180)})}return items}
+async function fetchFeed(url,category,source){const r=await fetch(url,{headers:{'Accept':'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.5','User-Agent':'Mozilla/5.0 TradeXAI/1.0'},cf:{cacheTtl:300,cacheEverything:true}});if(!r.ok)throw new Error(`${source} yanıt vermedi (${r.status})`);const items=parseRss(await r.text(),category,source);if(!items.length)throw new Error(`${source} boş yanıt verdi`);return items}
+function googleUrl(q){const u=new URL('https://news.google.com/rss/search');u.searchParams.set('q',q);u.searchParams.set('hl','tr');u.searchParams.set('gl','TR');u.searchParams.set('ceid','TR:tr');return u.toString()}
+function bingUrl(q){const u=new URL('https://www.bing.com/news/search');u.searchParams.set('q',q);u.searchParams.set('format','rss');u.searchParams.set('setlang','tr-tr');u.searchParams.set('cc','TR');return u.toString()}
+async function searchNews(q,category,kind){const attempts=[()=>fetchFeed(googleUrl(q),category,'Google News'),()=>fetchFeed(bingUrl(q),category,'Bing News')];if(kind==='crypto')attempts.push(()=>fetchFeed('https://www.coindesk.com/arc/outboundfeeds/rss/',category,'CoinDesk'));if(kind==='stocks')attempts.push(()=>fetchFeed('https://feeds.marketwatch.com/marketwatch/topstories/',category,'MarketWatch'));const errors=[];for(const fn of attempts){try{return await fn()}catch(e){errors.push(e?.message||String(e))}}throw new Error(errors.join(' | '))}
 async function news(topic='all'){
  const jobs=[];
- if(topic==='all'||topic==='stocks'){jobs.push(rssSearch('Borsa İstanbul OR BIST 100 OR THYAO OR ASELSAN when:1d','Borsa'));jobs.push(rssSearch('NASDAQ OR S&P 500 OR Dow Jones OR Wall Street stocks when:1d','ABD Borsaları'))}
- if(topic==='all'||topic==='crypto')jobs.push(rssSearch('Bitcoin OR Ethereum OR kripto OR cryptocurrency when:1d','Kripto'));
- const settled=await Promise.allSettled(jobs),all=[];for(const x of settled)if(x.status==='fulfilled')all.push(...x.value);
+ if(topic==='all'||topic==='stocks'){jobs.push(searchNews('Borsa İstanbul BIST 100 THYAO ASELSAN son 24 saat','Borsa','stocks'));jobs.push(searchNews('NASDAQ S&P 500 Dow Jones Wall Street stocks latest','ABD Borsaları','stocks'))}
+ if(topic==='all'||topic==='crypto')jobs.push(searchNews('Bitcoin Ethereum kripto cryptocurrency latest','Kripto','crypto'));
+ const settled=await Promise.allSettled(jobs),all=[],errors=[];for(const x of settled){if(x.status==='fulfilled')all.push(...x.value);else errors.push(x.reason?.message||String(x.reason))}
  const seen=new Set(),dedup=[];for(const n of all.sort((a,b)=>new Date(b.publishedAt)-new Date(a.publishedAt))){const k=n.title.toLocaleLowerCase('tr-TR').replace(/\s+/g,' ').trim();if(seen.has(k))continue;seen.add(k);dedup.push(n);if(dedup.length>=24)break}
- if(!dedup.length&&settled.some(x=>x.status==='rejected'))throw new Error(settled.find(x=>x.status==='rejected')?.reason?.message||'Haberler alınamadı');
+ if(!dedup.length)throw new Error(errors[0]||'Haberler alınamadı');
  return {ok:true,topic,updatedAt:new Date().toISOString(),items:dedup};
 }
 
 async function diag(env){
- const out={ok:true,version:VERSION,d1:!!env.DB,authScheme:'browser-pbkdf2+server-sha256',news:true};
+ const out={ok:true,version:VERSION,d1:!!env.DB,authScheme:'browser-pbkdf2+server-sha256',news:true,newsFallback:true};
  if(!env.DB)return out;
  try{const users=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").first();const sessions=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'").first();const claims=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='owner_claims'").first();const cols=(await env.DB.prepare('PRAGMA table_info(users)').all()).results||[];out.tables={users:!!users,sessions:!!sessions,ownerClaims:!!claims};out.userColumns=cols.map(x=>x.name);out.writeReady=!!users&&!!sessions&&cols.some(x=>x.name==='password_hash')&&cols.some(x=>x.name==='password_salt')}catch(e){out.ok=false;out.error=e?.message||String(e)}
  return out;
