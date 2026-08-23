@@ -1,0 +1,2 @@
+Force Cloudflare Worker deploy for V21 BIST100 + AI scoring update.
+Timestamp: 2026-08-23
