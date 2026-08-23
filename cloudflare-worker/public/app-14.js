@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  const LOGO='./tradex-ai-logo.webp?v=20260823-3';
+  const LOGO='./tradex-ai-logo.webp?v=20260823-4';
 
   function ensureStyle(){
     if(document.getElementById('tradex-final-brand-style')) return;
@@ -21,8 +21,10 @@
   function brandAuth(){
     const brand=document.querySelector('.asbp-auth-brand');
     if(!brand) return;
+    if(brand.dataset.tradexFinal==='1') return;
     const sub=/Yerel/i.test(brand.textContent||'')?'Yerel güvenli giriş':'Cloudflare güvenli giriş';
     brand.innerHTML=`<img class="tradex-login-logo" src="${LOGO}" alt="TradeX AI Logo"><div><div class="tradex-login-name">TradeX <span class="ai">AI</span></div><small class="tradex-login-sub">${sub}</small></div>`;
+    brand.dataset.tradexFinal='1';
   }
 
   function renameOldBrand(){
@@ -44,7 +46,12 @@
   }
 
   apply();
-  const obs=new MutationObserver(()=>apply());
-  obs.observe(document.documentElement,{childList:true,subtree:true});
-  window.addEventListener('load',apply);
+  let queued=false;
+  const obs=new MutationObserver(()=>{
+    if(queued) return;
+    queued=true;
+    requestAnimationFrame(()=>{queued=false;apply();});
+  });
+  obs.observe(document.body||document.documentElement,{childList:true,subtree:true});
+  window.addEventListener('load',apply,{once:true});
 })();
