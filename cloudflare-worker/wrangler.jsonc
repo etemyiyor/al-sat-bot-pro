@@ -4,7 +4,8 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-23",
   "vars": {
-    "BLOOMBERG_MODE": "gateway"
+    "BLOOMBERG_MODE": "gateway",
+    "BRAND_NAME": "TradeX AI"
   },
   "assets": {
     "directory": "./public",
