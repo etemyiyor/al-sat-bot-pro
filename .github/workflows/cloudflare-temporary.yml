@@ -51,13 +51,13 @@ jobs:
 
           cat > "$RUNNER_TEMP/claim-public.pem" <<'PEM'
           -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkP487LoizB/RYuoaIPbm
-          Sjq/XFqnLH1TEKZPr4filKVVOcqAFD5pAtqE24/0sK3gLLPaQmumswF7oj9EkZyV
-          fxcyuxEGfDA4+hl/0leTH76trgdbsxErSWq5F+iLunZ68kWDw+wX9OeyoGf6wuQ9
-          xYCSOIkO7TUr4w05MnRK9J12IAByyNsxWZeQVPrw50tyt1pJx/GQHhP4Tcd5mAxn
-          brv1/AsydUPuJPMeVcwco5YGXfSYjH2GT2kKyPk1FsqbB3Aqjokg2NWOh7zY4ojh
-          Ea9G3ccudVkV0yMZfN5yMkMwxlrjLkuGf0yxUWO9SUEj42m9iETDL6/DfWFBk0CZ
-          8QIDAQAB
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8nSzhMrsqRNFEogIOZ//
+          ETibsmTtu+f+udpY+ewjhL6vl+dw8GRx4ld2tnGQuKg81x9Nufp1lyXRiGuLp1bP
+          kHSSkyql7SSyqSv9Peyri/e61kFsuJQbLBrYXULkx1kuMFEEU6g8dHyrQ+QZXC2K
+          Pm7nhJ+95E0yxHkcisKMP36dEsZIsdr3GOGiuMaZ9kslp77r7rPHJPW2qGllQd5i
+          Vt8r7XeQDg+hNAWaR3sQP9UGQShJPHRarvpB1xDTxFtY5c5SIwctc20dHcpLmwBe
+          a+02kGDdspBRCnoTh657Q1SIJP1TiwVhOWqIu/CQ7igpUw/ExhdnZu5GtSVP7hQN
+          twIDAQAB
           -----END PUBLIC KEY-----
           PEM
 
