@@ -14,7 +14,7 @@ on:
       - ".github/workflows/cloudflare-worker.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -40,6 +40,7 @@ jobs:
           echo "Cloudflare credentials are configured"
 
       - name: Provision D1 auth database
+        id: d1
         working-directory: cloudflare-worker
         env:
           DB_NAME: tradex-ai-auth
@@ -54,6 +55,7 @@ jobs:
             DB_ID=$(node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync('/tmp/d1.json','utf8'));const d=a.find(x=>x.name===process.env.DB_NAME);if(!d)process.exit(2);process.stdout.write(d.uuid||d.id||'')")
           fi
           echo "Using D1 database: $DB_NAME ($DB_ID)"
+          echo "db_id=$DB_ID" >> "$GITHUB_OUTPUT"
           DB_ID="$DB_ID" node <<'NODE'
           const fs=require('fs');
           const cfg=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
@@ -71,9 +73,41 @@ jobs:
           workingDirectory: cloudflare-worker
           command: deploy --config wrangler.deploy.jsonc
 
-      - name: Print deployment URL
+      - name: Verify deployed health
+        id: health
         if: success()
         env:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
-          echo "deployment_url=${DEPLOYMENT_URL}"
+          set -euo pipefail
+          URL="${DEPLOYMENT_URL%/}/health"
+          echo "Checking $URL"
+          BODY=$(curl -fsS "$URL")
+          echo "$BODY"
+          node -e "const d=JSON.parse(process.argv[1]); if(!d.ok || !d.authDatabaseConfigured) process.exit(2)" "$BODY"
+          echo "health_ok=true" >> "$GITHUB_OUTPUT"
+
+      - name: Save permanent deployment result
+        if: always() && github.event_name != 'pull_request'
+        env:
+          JOB_STATUS: ${{ job.status }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+          DB_ID: ${{ steps.d1.outputs.db_id }}
+          HEALTH_OK: ${{ steps.health.outputs.health_ok }}
+        run: |
+          set -euo pipefail
+          {
+            echo "status=$JOB_STATUS"
+            echo "live_url=${DEPLOYMENT_URL:-not_available}"
+            echo "d1_database=tradex-ai-auth"
+            echo "d1_database_id=${DB_ID:-not_available}"
+            echo "health_ok=${HEALTH_OK:-false}"
+          } > cloudflare-permanent-result.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cloudflare-permanent-result.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Record permanent Cloudflare deployment"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
