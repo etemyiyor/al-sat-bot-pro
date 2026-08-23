@@ -1,1 +1,1 @@
-Trigger admin-secure permanent deploy 2026-08-23 19:49 +03.
+Trigger admin-secure temporary deploy 2026-08-23 19:55 +03.
