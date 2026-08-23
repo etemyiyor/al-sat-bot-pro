@@ -174,7 +174,7 @@ export default {
       if (path === '/health') {
         return json(request, {
           ok: true,
-          service: 'AL-SAT BOT PRO Bloomberg Worker',
+          service: 'TradeX AI Worker',
           upstreamConfigured: !!env.BLOOMBERG_UPSTREAM_URL,
           authDatabaseConfigured: !!env.DB,
           mode: env.BLOOMBERG_MODE || 'gateway',
@@ -187,6 +187,7 @@ export default {
       if (path === '/auth/login' && request.method === 'POST') return authLogin(request, env);
       if (path === '/auth/logout' && request.method === 'POST') return authLogout(request, env);
       if (path === '/auth/me' && request.method === 'GET') {
+        if (!env.DB) return json(request, { ok: false, error: 'D1 veritabanı bağlı değil' }, 503);
         const user = await getSessionUser(request, env);
         return user ? json(request, { ok: true, user }) : json(request, { ok: false, error: 'Oturum yok' }, 401);
       }
