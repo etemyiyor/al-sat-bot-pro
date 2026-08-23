@@ -1,0 +1,40 @@
+name: Cloudflare PR Deploy Check
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "cloudflare-worker/**"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preflight secrets
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "${CF_TOKEN:-}" ]; then echo "CLOUDFLARE_API_TOKEN=set"; else echo "CLOUDFLARE_API_TOKEN=missing"; fi
+          if [ -n "${CF_ACCOUNT:-}" ]; then echo "CLOUDFLARE_ACCOUNT_ID=set"; else echo "CLOUDFLARE_ACCOUNT_ID=missing"; fi
+
+      - name: Deploy Worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloudflare-worker
+          command: deploy
+
+      - name: Show deployment URL
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          echo "deployment_url=${DEPLOYMENT_URL:-not_returned}"
