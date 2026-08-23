@@ -1,0 +1,4 @@
+deploy_outcome=failure
+cloudflare_api_token_set=false
+cloudflare_account_id_set=false
+deployment_url=not_returned
