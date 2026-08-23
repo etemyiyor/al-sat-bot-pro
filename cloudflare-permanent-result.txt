@@ -1,0 +1,5 @@
+status=failure
+live_url=not_available
+d1_database=tradex-ai-auth
+d1_database_id=not_available
+health_ok=false
