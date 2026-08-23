@@ -1,0 +1,11 @@
+{
+  "name": "tradex-ai-worker",
+  "private": true,
+  "scripts": {
+    "cf:prepare": "node scripts/cloudflare-build.mjs",
+    "cf:deploy": "npm run cf:prepare && npx wrangler deploy --config wrangler.deploy.jsonc"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
