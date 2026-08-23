@@ -1,1 +1,1 @@
-Deploy TradeX AI login fix 31.
+Deploy TradeX AI local mode 32.
