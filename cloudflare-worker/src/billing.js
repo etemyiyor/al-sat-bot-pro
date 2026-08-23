@@ -1,6 +1,6 @@
 import { ADMIN_ACCESS_CODE_HASH as FALLBACK_ADMIN_HASH } from './admin-config.js';
 const te=new TextEncoder();
-const OWNER_CLAIM_SHA256='c5b8f5fb617422d3fdec733a5228346137d2dbfc315e4fa39745d1ce12f937b4';
+const OWNER_CLAIM_SHA256='8c7fb7353f8551e79b89430838b05f53bfee63d16989657c7491397a22dd0f31';
 const SESSION_COOKIE='asbp_session';
 const apiBase=e=>String(e.IYZICO_BASE_URL||'https://api.iyzipay.com').replace(/\/$/,'');
 const plans=e=>({starter:String(e.IYZICO_PLAN_STARTER||''),pro:String(e.IYZICO_PLAN_PRO||''),business:String(e.IYZICO_PLAN_BUSINESS||'')});
