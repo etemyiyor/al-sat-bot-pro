@@ -1,0 +1,1 @@
+Run temporary Cloudflare deploy for AL-SAT BOT PRO mobile + desktop.
