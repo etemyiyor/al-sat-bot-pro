@@ -33,11 +33,20 @@ jobs:
           set -euo pipefail
           CF_TOKEN="${CF_TOKEN_SECRET:-${CF_TOKEN_VAR:-}}"
           CF_ACCOUNT="${CF_ACCOUNT_SECRET:-${CF_ACCOUNT_VAR:-}}"
-          test -n "$CF_TOKEN" || (echo "CLOUDFLARE_API_TOKEN is missing in GitHub Secrets/Variables" && exit 1)
-          test -n "$CF_ACCOUNT" || (echo "CLOUDFLARE_ACCOUNT_ID is missing in GitHub Secrets/Variables" && exit 1)
+          if [ -z "$CF_TOKEN" ]; then
+            echo "credentials" > /tmp/cf_stage
+            echo "CLOUDFLARE_API_TOKEN is missing" > /tmp/cf_error
+            exit 1
+          fi
+          if [ -z "$CF_ACCOUNT" ]; then
+            echo "credentials" > /tmp/cf_stage
+            echo "CLOUDFLARE_ACCOUNT_ID is missing" > /tmp/cf_error
+            exit 1
+          fi
           echo "CLOUDFLARE_API_TOKEN=$CF_TOKEN" >> "$GITHUB_ENV"
           echo "CLOUDFLARE_ACCOUNT_ID=$CF_ACCOUNT" >> "$GITHUB_ENV"
-          echo "Cloudflare credentials are configured"
+          echo "credentials_ok" > /tmp/cf_stage
+          echo "none" > /tmp/cf_error
 
       - name: Provision D1 auth database
         id: d1
@@ -45,27 +54,44 @@ jobs:
         env:
           DB_NAME: tradex-ai-auth
         run: |
-          set -euo pipefail
-          npm exec --yes wrangler@latest -- d1 list --json > /tmp/d1.json
+          set -u
+          echo "d1_list" > /tmp/cf_stage
+          if ! npm exec --yes wrangler@latest -- d1 list --json > /tmp/d1.json 2> /tmp/d1.err; then
+            sed -E 's/(Bearer|token|api[_ -]?token)[^ ]*/\1 [REDACTED]/Ig' /tmp/d1.err | tail -n 40 > /tmp/cf_error
+            exit 1
+          fi
           DB_ID=$(node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync('/tmp/d1.json','utf8'));const d=a.find(x=>x.name===process.env.DB_NAME);if(d)process.stdout.write(d.uuid||d.id||'')")
           if [ -z "$DB_ID" ]; then
-            echo "Creating D1 database $DB_NAME"
-            npm exec --yes wrangler@latest -- d1 create "$DB_NAME"
-            npm exec --yes wrangler@latest -- d1 list --json > /tmp/d1.json
+            echo "d1_create" > /tmp/cf_stage
+            if ! npm exec --yes wrangler@latest -- d1 create "$DB_NAME" > /tmp/d1-create.out 2> /tmp/d1-create.err; then
+              cat /tmp/d1-create.err /tmp/d1-create.out | sed -E 's/(Bearer|token|api[_ -]?token)[^ ]*/\1 [REDACTED]/Ig' | tail -n 40 > /tmp/cf_error
+              exit 1
+            fi
+            if ! npm exec --yes wrangler@latest -- d1 list --json > /tmp/d1.json 2> /tmp/d1.err; then
+              cat /tmp/d1.err | tail -n 40 > /tmp/cf_error
+              exit 1
+            fi
             DB_ID=$(node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync('/tmp/d1.json','utf8'));const d=a.find(x=>x.name===process.env.DB_NAME);if(!d)process.exit(2);process.stdout.write(d.uuid||d.id||'')")
           fi
-          echo "Using D1 database: $DB_NAME ($DB_ID)"
           echo "db_id=$DB_ID" >> "$GITHUB_OUTPUT"
+          echo "d1_config" > /tmp/cf_stage
           DB_ID="$DB_ID" node <<'NODE'
           const fs=require('fs');
           const cfg=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
           cfg.d1_databases=[{binding:'DB',database_name:process.env.DB_NAME,database_id:process.env.DB_ID,migrations_dir:'migrations'}];
           fs.writeFileSync('wrangler.deploy.jsonc',JSON.stringify(cfg,null,2));
           NODE
-          npm exec --yes wrangler@latest -- d1 execute "$DB_NAME" --remote --file=migrations/0001_auth.sql --yes
+          echo "d1_migrate" > /tmp/cf_stage
+          if ! npm exec --yes wrangler@latest -- d1 execute "$DB_NAME" --remote --file=migrations/0001_auth.sql --yes > /tmp/d1-migrate.out 2> /tmp/d1-migrate.err; then
+            cat /tmp/d1-migrate.err /tmp/d1-migrate.out | tail -n 40 > /tmp/cf_error
+            exit 1
+          fi
+          echo "d1_ok" > /tmp/cf_stage
+          echo "none" > /tmp/cf_error
 
       - name: Deploy Worker
         id: deploy
+        if: success()
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
@@ -80,12 +106,13 @@ jobs:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
           set -euo pipefail
+          echo "health" > /tmp/cf_stage
           URL="${DEPLOYMENT_URL%/}/health"
-          echo "Checking $URL"
           BODY=$(curl -fsS "$URL")
-          echo "$BODY"
           node -e "const d=JSON.parse(process.argv[1]); if(!d.ok || !d.authDatabaseConfigured) process.exit(2)" "$BODY"
           echo "health_ok=true" >> "$GITHUB_OUTPUT"
+          echo "health_ok" > /tmp/cf_stage
+          echo "none" > /tmp/cf_error
 
       - name: Save permanent deployment result
         if: always() && github.event_name != 'pull_request'
@@ -96,18 +123,24 @@ jobs:
           HEALTH_OK: ${{ steps.health.outputs.health_ok }}
         run: |
           set -euo pipefail
+          STAGE=$(cat /tmp/cf_stage 2>/dev/null || echo unknown)
+          ERROR=$(cat /tmp/cf_error 2>/dev/null || echo unavailable)
           {
             echo "status=$JOB_STATUS"
             echo "live_url=${DEPLOYMENT_URL:-not_available}"
             echo "d1_database=tradex-ai-auth"
             echo "d1_database_id=${DB_ID:-not_available}"
             echo "health_ok=${HEALTH_OK:-false}"
+            echo "failure_stage=$STAGE"
+            echo "error_begin"
+            printf '%s\n' "$ERROR"
+            echo "error_end"
           } > cloudflare-permanent-result.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add cloudflare-permanent-result.txt
           if ! git diff --cached --quiet; then
-            git commit -m "Record permanent Cloudflare deployment"
+            git commit -m "Record permanent Cloudflare deployment diagnostics"
             git pull --rebase origin main
             git push origin HEAD:main
           fi
