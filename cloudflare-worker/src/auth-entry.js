@@ -2,7 +2,7 @@ import app from './index.js';
 
 const SESSION_COOKIE='asbp_session';
 const SESSION_SECONDS=60*60*24*30;
-const VERSION='auth-proof-20260823-2218';
+const VERSION='auth-news-20260824-0030';
 const te=new TextEncoder();
 
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers}});
@@ -14,8 +14,25 @@ async function body(req){try{return await req.json()}catch{return {}}}
 async function session(env,userId,remember=true){const raw=crypto.getRandomValues(new Uint8Array(32));const token=b64(raw).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');const tokenHash=await sha(token);const ttl=remember?SESSION_SECONDS:43200,now=Date.now();await env.DB.prepare('INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)').bind(tokenHash,userId,now+ttl*1000,now).run();return{token,ttl}}
 async function storedHash(proof,salt){return sha(`${salt}:${proof}`)}
 
+function decodeXml(s=''){return String(s).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(Number(n)))}
+function stripHtml(s=''){return decodeXml(String(s).replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim())}
+function tag(block,name){const m=String(block).match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`,'i'));return m?decodeXml(m[1]).trim():''}
+function shortText(s,max=180){const x=stripHtml(s);return x.length>max?x.slice(0,max-1).trimEnd()+'…':x}
+function timeLabel(date){const ms=Date.now()-date.getTime();if(!Number.isFinite(ms))return '';const min=Math.max(0,Math.floor(ms/60000));if(min<60)return `${min} dk önce`;const h=Math.floor(min/60);if(h<24)return `${h} sa önce`;const d=Math.floor(h/24);return `${d} gün önce`}
+function parseRss(xml,category){const items=[];const blocks=String(xml).match(/<item>[\s\S]*?<\/item>/gi)||[];for(const b of blocks){const title=stripHtml(tag(b,'title')),url=tag(b,'link'),pub=tag(b,'pubDate'),source=stripHtml(tag(b,'source'))||'Google News',description=tag(b,'description');if(!title||!url)continue;const dt=new Date(pub||Date.now());items.push({title,url,source,category,publishedAt:Number.isFinite(dt.getTime())?dt.toISOString():new Date().toISOString(),timeLabel:timeLabel(dt),summary:shortText(description,180)})}return items}
+async function rssSearch(q,category){const u=new URL('https://news.google.com/rss/search');u.searchParams.set('q',q);u.searchParams.set('hl','tr');u.searchParams.set('gl','TR');u.searchParams.set('ceid','TR:tr');const r=await fetch(u.toString(),{headers:{'Accept':'application/rss+xml, application/xml, text/xml','User-Agent':'TradeXAI/1.0'},cf:{cacheTtl:300,cacheEverything:true}});if(!r.ok)throw new Error(`Haber kaynağı yanıt vermedi (${r.status})`);return parseRss(await r.text(),category)}
+async function news(topic='all'){
+ const jobs=[];
+ if(topic==='all'||topic==='stocks'){jobs.push(rssSearch('Borsa İstanbul OR BIST 100 OR THYAO OR ASELSAN when:1d','Borsa'));jobs.push(rssSearch('NASDAQ OR S&P 500 OR Dow Jones OR Wall Street stocks when:1d','ABD Borsaları'))}
+ if(topic==='all'||topic==='crypto')jobs.push(rssSearch('Bitcoin OR Ethereum OR kripto OR cryptocurrency when:1d','Kripto'));
+ const settled=await Promise.allSettled(jobs),all=[];for(const x of settled)if(x.status==='fulfilled')all.push(...x.value);
+ const seen=new Set(),dedup=[];for(const n of all.sort((a,b)=>new Date(b.publishedAt)-new Date(a.publishedAt))){const k=n.title.toLocaleLowerCase('tr-TR').replace(/\s+/g,' ').trim();if(seen.has(k))continue;seen.add(k);dedup.push(n);if(dedup.length>=24)break}
+ if(!dedup.length&&settled.some(x=>x.status==='rejected'))throw new Error(settled.find(x=>x.status==='rejected')?.reason?.message||'Haberler alınamadı');
+ return {ok:true,topic,updatedAt:new Date().toISOString(),items:dedup};
+}
+
 async function diag(env){
- const out={ok:true,version:VERSION,d1:!!env.DB,authScheme:'browser-pbkdf2+server-sha256'};
+ const out={ok:true,version:VERSION,d1:!!env.DB,authScheme:'browser-pbkdf2+server-sha256',news:true};
  if(!env.DB)return out;
  try{const users=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").first();const sessions=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'").first();const claims=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='owner_claims'").first();const cols=(await env.DB.prepare('PRAGMA table_info(users)').all()).results||[];out.tables={users:!!users,sessions:!!sessions,ownerClaims:!!claims};out.userColumns=cols.map(x=>x.name);out.writeReady=!!users&&!!sessions&&cols.some(x=>x.name==='password_hash')&&cols.some(x=>x.name==='password_salt')}catch(e){out.ok=false;out.error=e?.message||String(e)}
  return out;
@@ -48,4 +65,4 @@ async function login(req,env){
  return json({ok:true,user:{id:user.id,username:user.username,email:user.email||null}},200,{'Set-Cookie':cookie(SESSION_COOKIE,s.token,s.ttl)});
 }
 
-export default{async fetch(request,env,ctx){const p=new URL(request.url).pathname.replace(/\/+$/,'')||'/';try{if(p==='/auth/diag'&&request.method==='GET')return json(await diag(env));if(p==='/auth/register'&&request.method==='POST')return await register(request,env);if(p==='/auth/login'&&request.method==='POST')return await login(request,env);return await app.fetch(request,env,ctx)}catch(e){return json({ok:false,error:e?.message||'Sunucu hatası',version:VERSION},e?.status||500)}}};
+export default{async fetch(request,env,ctx){const u=new URL(request.url),p=u.pathname.replace(/\/+$/,'')||'/';try{if(p==='/auth/diag'&&request.method==='GET')return json(await diag(env));if(p==='/auth/register'&&request.method==='POST')return await register(request,env);if(p==='/auth/login'&&request.method==='POST')return await login(request,env);if(p==='/news'&&request.method==='GET'){const topic=['all','stocks','crypto'].includes(u.searchParams.get('topic'))?u.searchParams.get('topic'):'all';return json(await news(topic),200,{'Cache-Control':'public, max-age=120, s-maxage=300'})}return await app.fetch(request,env,ctx)}catch(e){return json({ok:false,error:e?.message||'Sunucu hatası',version:VERSION},e?.status||500)}}};
