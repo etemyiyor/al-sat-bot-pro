@@ -23,33 +23,37 @@
       @media(max-width:760px){#tradexSubGate .tx-shell{width:calc(100% - 12px)!important;padding:22px 16px!important}#tradexSubGate .tx-plans,#tradexSubGate .tx-plans~.tx-form{grid-template-columns:1fr!important}}
     `;document.head.appendChild(s);
   }
+  function setText(el,text){if(el&&el.textContent!==text)el.textContent=text}
   function normalize(){
     const g=document.getElementById('tradexSubGate');if(!g)return;
     style();
     const title=g.querySelector('.tx-title');
     const btnUnlock=document.getElementById('txUnlock');
     const btnCreate=document.getElementById('txCreate');
-    if(btnUnlock){
-      if(title)title.textContent='Giriş Yap';
-      const muted=g.querySelector('.tx-title + .tx-muted');if(muted)muted.textContent='TradeX AI hesabına giriş yap.';
-      btnUnlock.textContent='GİRİŞ YAP';
+    if(btnUnlock&&!g.dataset.normalLogin){
+      g.dataset.normalLogin='1';delete g.dataset.normalRegister;
+      setText(title,'Giriş Yap');
+      setText(g.querySelector('.tx-title + .tx-muted'),'TradeX AI hesabına giriş yap.');
+      setText(btnUnlock,'GİRİŞ YAP');
       const pass=document.getElementById('txLoginPass');
-      if(pass){const group=pass.closest('.tx-field');const lab=group?.querySelector('label');if(lab)lab.textContent='Şifre';
+      if(pass){const group=pass.closest('.tx-field');setText(group?.querySelector('label'),'Şifre');
         if(!document.getElementById('txLoginIdentity')){const d=document.createElement('div');d.className='tx-field';d.innerHTML='<label>Kullanıcı adı veya e-posta</label><input id="txLoginIdentity" type="text" autocomplete="username" placeholder="Kullanıcı adı veya e-posta">';group?.parentElement?.insertBefore(d,group);}
       }
-      const reset=document.getElementById('txReset');if(reset)reset.textContent='Hesabı değiştir / Yeni hesap oluştur';
-      const brandSub=g.querySelector('.tx-head .tx-muted');if(brandSub)brandSub.textContent='Güvenli giriş';
+      setText(document.getElementById('txReset'),'Hesap Oluştur / Hesabı Değiştir');
+      setText(g.querySelector('.tx-head .tx-muted'),'Güvenli giriş');
     }
-    if(btnCreate){
-      if(title)title.textContent='Hesap Oluştur';
-      const muted=g.querySelector('.tx-title + .tx-muted');if(muted)muted.textContent='TradeX AI hesabını oluştur ve abonelik planını seç.';
-      btnCreate.textContent='HESAP OLUŞTUR';
-      const brandSub=g.querySelector('.tx-head .tx-muted');if(brandSub)brandSub.textContent='Yeni hesap';
-      const note=g.querySelector('.tx-note');if(note)note.textContent='Bilgilerin güvenli şekilde şifrelenerek korunur.';
+    if(btnCreate&&!g.dataset.normalRegister){
+      g.dataset.normalRegister='1';delete g.dataset.normalLogin;
+      setText(title,'Hesap Oluştur');
+      setText(g.querySelector('.tx-title + .tx-muted'),'TradeX AI hesabını oluştur ve abonelik planını seç.');
+      setText(btnCreate,'HESAP OLUŞTUR');
+      setText(g.querySelector('.tx-head .tx-muted'),'Yeni hesap');
+      setText(g.querySelector('.tx-note'),'Bilgilerin güvenli şekilde şifrelenerek korunur.');
     }
-    const adminBtn=document.getElementById('txAdminLogin');if(adminBtn){if(title)title.textContent='Yönetici Girişi';adminBtn.textContent='GİRİŞ YAP'}
+    const adminBtn=document.getElementById('txAdminLogin');if(adminBtn&&!g.dataset.normalAdmin){g.dataset.normalAdmin='1';setText(title,'Yönetici Girişi');setText(adminBtn,'GİRİŞ YAP')}
   }
   style();normalize();
-  const obs=new MutationObserver(()=>requestAnimationFrame(normalize));
-  obs.observe(document.documentElement,{childList:true,subtree:true});
+  let queued=false;
+  const obs=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;normalize()})});
+  obs.observe(document.body||document.documentElement,{childList:true,subtree:true});
 })();
