@@ -1,1 +1,2 @@
 Trigger Cloudflare deploy after credential fallback update.
+Rotate temporary deploy claim link.
