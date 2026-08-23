@@ -1,12 +1,12 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "al-sat-bot-pro-bloomberg",
-  "main": "src/index.js",
+  "main": "src/auth-entry.js",
   "compatibility_date": "2026-08-23",
   "vars": {
     "BLOOMBERG_MODE": "gateway",
     "BRAND_NAME": "TradeX AI",
-    "DEPLOY_TRIGGER": "2026-08-23T18:56+03:00"
+    "DEPLOY_TRIGGER": "2026-08-23T21:40+03:00"
   },
   "assets": {
     "directory": "./public",
