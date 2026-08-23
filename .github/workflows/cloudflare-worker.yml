@@ -89,6 +89,22 @@ jobs:
           echo "d1_ok" > /tmp/cf_stage
           echo "none" > /tmp/cf_error
 
+      - name: Sync admin access secret
+        if: success() && github.event_name != 'pull_request'
+        working-directory: cloudflare-worker
+        env:
+          ADMIN_ACCESS_CODE: ${{ secrets.ADMIN_ACCESS_CODE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ADMIN_ACCESS_CODE:-}" ]; then
+            echo "admin_secret_missing" > /tmp/cf_stage
+            echo "ADMIN_ACCESS_CODE is missing" > /tmp/cf_error
+            exit 1
+          fi
+          printf '%s' "$ADMIN_ACCESS_CODE" | npm exec --yes wrangler@latest -- secret put ADMIN_ACCESS_CODE --config wrangler.deploy.jsonc >/tmp/admin-secret.out 2>/tmp/admin-secret.err
+          echo "admin_secret_ok" > /tmp/cf_stage
+          echo "none" > /tmp/cf_error
+
       - name: Deploy Worker
         id: deploy
         if: success()
