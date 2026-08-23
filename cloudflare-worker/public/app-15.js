@@ -1,95 +1,26 @@
 (function(){
   'use strict';
-
-  const USER_KEY='tradex_user_v1';
-  const SUB_KEY='tradex_subscription_v1';
+  const USER_KEY='tradex_user_v1',SUB_KEY='tradex_subscription_v2',ENT_KEY='tradex_entitlement_v1';
   const ADMIN_USERS=new Set(['admin']);
-
   const plans={
-    starter:{id:'starter',name:'Başlangıç',price:299,desc:'Temel analiz ve piyasa ekranları',features:['BIST / ABD / Kripto piyasa ekranı','Teknik analiz','5 sembole kadar tarama','Paper portföy']},
-    pro:{id:'pro',name:'Pro',price:599,desc:'Aktif yatırımcılar için gelişmiş araçlar',features:['Başlangıç planındaki her şey','Gelişmiş tarayıcı','Risk ve emir planı','TradingView terminali','Daha yüksek kullanım limiti'],popular:true},
-    business:{id:'business',name:'Kurumsal',price:1299,desc:'Yoğun kullanım ve ekip ihtiyaçları',features:['Pro planındaki her şey','Sınırsız yerel izleme listesi','Öncelikli özellik erişimi','Gelişmiş admin görünümü']}
+    starter:{id:'starter',name:'Başlangıç',price:299,desc:'Temel analiz ve piyasa ekranları'},
+    pro:{id:'pro',name:'Pro',price:599,desc:'Gelişmiş analiz ve tarayıcı',popular:true},
+    business:{id:'business',name:'Kurumsal',price:1299,desc:'Yoğun kullanım ve gelişmiş erişim'}
   };
-
-  function read(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
-  function write(key,val){try{localStorage.setItem(key,JSON.stringify(val));return true}catch{try{sessionStorage.setItem(key,JSON.stringify(val));return true}catch{return false}}}
-  function remove(key){try{localStorage.removeItem(key)}catch{}try{sessionStorage.removeItem(key)}catch{}}
-  function now(){return Date.now()}
-  function isAdmin(user){return !!user && ADMIN_USERS.has(String(user.username||'').trim().toLowerCase())}
-  function validSub(sub){return !!sub && sub.status==='active' && Number(sub.expiresAt)>now()}
-
-  function style(){
-    if(document.getElementById('tradex-sub-style'))return;
-    const s=document.createElement('style');
-    s.id='tradex-sub-style';
-    s.textContent=`
-      #tradexSubGate{position:fixed;inset:0;z-index:2147483600;background:radial-gradient(circle at 15% 0%,#172941 0,#08111b 38%,#04070c 100%);display:grid;place-items:center;padding:18px;overflow:auto;color:#eef5ff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
-      .tx-sub-shell{width:min(1040px,100%);background:rgba(8,14,23,.985);border:1px solid #21334a;border-radius:24px;box-shadow:0 28px 100px rgba(0,0,0,.6);padding:24px}
-      .tx-sub-head{display:flex;align-items:center;gap:14px;margin-bottom:18px}.tx-sub-logo{width:58px;height:58px;border-radius:16px;object-fit:cover;border:1px solid rgba(56,169,255,.42)}
-      .tx-sub-brand{font-weight:950;font-size:22px}.tx-sub-brand span{color:#38a9ff}.tx-sub-muted{color:#8ea1bb;font-size:13px;line-height:1.5}
-      .tx-sub-title{font-size:28px;font-weight:900;margin:8px 0}.tx-sub-form{max-width:520px;margin:0 auto}.tx-sub-group{margin:12px 0}.tx-sub-group label{display:block;font-size:12px;color:#9db0c9;margin-bottom:7px}.tx-sub-group input{box-sizing:border-box;width:100%;height:48px;border-radius:12px;border:1px solid #26384f;background:#09121d;color:#f4f8ff;padding:0 14px;font-size:16px;outline:none}
-      .tx-sub-btn{height:48px;border:0;border-radius:12px;padding:0 18px;font-weight:900;cursor:pointer;background:linear-gradient(135deg,#10b981,#22d3ee);color:#041014}.tx-sub-btn.alt{background:#111c2a;color:#dce8f7;border:1px solid #2a3d56}.tx-sub-btn.full{width:100%}
-      .tx-plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:20px}.tx-plan{position:relative;border:1px solid #26384f;background:#0a121d;border-radius:18px;padding:18px;cursor:pointer;transition:.18s ease}.tx-plan:hover,.tx-plan.active{transform:translateY(-2px);border-color:#3db7ff;box-shadow:0 14px 40px rgba(0,0,0,.28)}.tx-plan.popular:before{content:'EN POPÜLER';position:absolute;right:12px;top:12px;font-size:10px;font-weight:900;color:#04212a;background:#67e8f9;padding:5px 7px;border-radius:999px}.tx-plan h3{margin:0 0 5px;font-size:20px}.tx-price{font-size:30px;font-weight:950;margin:14px 0}.tx-price small{font-size:12px;color:#8ea1bb;font-weight:600}.tx-plan ul{padding-left:18px;margin:14px 0 0;color:#b5c3d6;font-size:13px;line-height:1.75}
-      .tx-sub-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:18px}.tx-sub-msg{min-height:20px;margin-top:10px;color:#ff8a98;font-size:13px}.tx-admin-note{margin-top:12px;padding:10px 12px;border:1px solid #24415b;background:#0a1724;border-radius:12px;color:#9fdcff;font-size:12px}
-      #tradexSubBadge{position:fixed;left:14px;bottom:14px;z-index:99997;padding:8px 11px;border-radius:999px;background:#0b1622;color:#8fdcff;border:1px solid #213248;font:700 11px system-ui}
-      @media(max-width:760px){#tradexSubGate{padding:10px}.tx-sub-shell{padding:18px 14px;border-radius:18px}.tx-plans{grid-template-columns:1fr}.tx-sub-title{font-size:23px}.tx-sub-actions{flex-direction:column}.tx-sub-actions .tx-sub-btn{width:100%}.tx-plan{padding:16px}}
-    `;
-    document.head.appendChild(s);
-  }
-
+  const read=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null}};
+  const write=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true}catch{return false}};
+  const remove=k=>{try{localStorage.removeItem(k)}catch{}};
+  const isAdmin=u=>!!u&&ADMIN_USERS.has(String(u.username||'').trim().toLowerCase());
+  const validSub=s=>!!s&&s.status==='active'&&Number(s.expiresAt)>Date.now();
+  async function api(path,opt={}){const r=await fetch(path,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});let d={};try{d=await r.json()}catch{}if(!r.ok||d.ok===false)throw Error(d.error||`İstek başarısız (${r.status})`);return d}
+  function style(){if(document.getElementById('tradex-sub-style'))return;const s=document.createElement('style');s.id='tradex-sub-style';s.textContent=`#tradexSubGate{position:fixed;inset:0;z-index:2147483600;background:radial-gradient(circle at 15% 0%,#172941 0,#08111b 38%,#04070c 100%);display:grid;place-items:center;padding:14px;overflow:auto;color:#eef5ff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.tx-shell{width:min(980px,100%);background:#08111b;border:1px solid #21334a;border-radius:22px;padding:22px}.tx-head{display:flex;align-items:center;gap:12px}.tx-logo{width:56px;height:56px;border-radius:15px}.tx-title{font-size:26px;font-weight:900;margin:18px 0 5px}.tx-muted{color:#8ea1bb;font-size:13px;line-height:1.5}.tx-plans{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}.tx-plan{border:1px solid #26384f;background:#0a121d;border-radius:16px;padding:17px;cursor:pointer}.tx-plan.active{border-color:#45bdff;box-shadow:0 12px 34px rgba(0,0,0,.28)}.tx-plan h3{margin:0}.tx-price{font-size:29px;font-weight:950;margin:12px 0}.tx-price small{font-size:12px;color:#8ea1bb}.tx-btn{height:46px;border:0;border-radius:11px;padding:0 16px;font-weight:900;background:linear-gradient(135deg,#10b981,#22d3ee);color:#041014;cursor:pointer}.tx-btn.alt{background:#111c2a;color:#dce8f7;border:1px solid #2a3d56}.tx-actions{display:flex;justify-content:space-between;gap:10px;margin-top:16px}.tx-form{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:15px}.tx-field label{display:block;font-size:11px;color:#9db0c9;margin-bottom:5px}.tx-field input{box-sizing:border-box;width:100%;height:44px;border-radius:10px;border:1px solid #26384f;background:#09121d;color:white;padding:0 12px;font-size:15px}.tx-msg{min-height:18px;color:#ff8a98;font-size:12px;margin-top:10px}.tx-note{margin-top:12px;padding:10px;border:1px solid #24415b;background:#0a1724;border-radius:10px;color:#9fdcff;font-size:12px}#tradexSubBadge{position:fixed;left:14px;bottom:14px;z-index:99997;padding:8px 11px;border-radius:999px;background:#0b1622;color:#8fdcff;border:1px solid #213248;font:700 11px system-ui}.tx-payframe{width:100%;height:620px;border:0;border-radius:14px;background:white;margin-top:14px}@media(max-width:760px){.tx-plans,.tx-form{grid-template-columns:1fr}.tx-actions{flex-direction:column}.tx-btn{width:100%}.tx-shell{padding:16px 12px}.tx-payframe{height:720px}}`;document.head.appendChild(s)}
   function gate(){let g=document.getElementById('tradexSubGate');if(!g){g=document.createElement('div');g.id='tradexSubGate';document.body.appendChild(g)}return g}
   function closeGate(){document.getElementById('tradexSubGate')?.remove()}
-  function addBadge(user,sub){
-    document.getElementById('tradexSubBadge')?.remove();
-    const b=document.createElement('div');b.id='tradexSubBadge';
-    b.textContent=isAdmin(user)?'ADMIN • Abonelik muaf':`${plans[sub?.plan]?.name||'Abonelik'} • Aktif`;
-    document.body.appendChild(b);
-  }
-
-  function renderRegister(){
-    const g=gate();
-    g.innerHTML=`<div class="tx-sub-shell"><div class="tx-sub-head"><img class="tx-sub-logo" src="./tradex-ai-logo.webp?v=20260823-6" alt="TradeX AI"><div><div class="tx-sub-brand">TradeX <span>AI</span></div><div class="tx-sub-muted">Yeni kullanıcı erişimi</div></div></div><div class="tx-sub-form"><div class="tx-sub-title">Hesabını oluştur</div><div class="tx-sub-muted">Yeni kullanıcılar abonelik planı seçerek terminali kullanır. Admin hesabı abonelikten muaftır.</div><form id="txUserForm"><div class="tx-sub-group"><label>Kullanıcı adı</label><input id="txUsername" required minlength="3" maxlength="32" autocomplete="username"></div><div class="tx-sub-group"><label>E-posta</label><input id="txEmail" type="email" required autocomplete="email"></div><div class="tx-sub-group"><label>Şifre</label><input id="txPassword" type="password" required minlength="6" autocomplete="new-password"></div><button class="tx-sub-btn full" type="submit">DEVAM ET</button><div id="txUserMsg" class="tx-sub-msg"></div></form><div class="tx-admin-note">Admin kullanıcı adı: <b>admin</b>. Bu kullanıcı abonelik ekranını atlar.</div></div></div>`;
-    document.getElementById('txUserForm').onsubmit=e=>{
-      e.preventDefault();
-      const username=document.getElementById('txUsername').value.trim();
-      const email=document.getElementById('txEmail').value.trim();
-      const password=document.getElementById('txPassword').value;
-      const msg=document.getElementById('txUserMsg');
-      if(!/^[A-Za-z0-9_.-]{3,32}$/.test(username)){msg.textContent='Kullanıcı adı 3-32 karakter olmalı.';return}
-      if(password.length<6){msg.textContent='Şifre en az 6 karakter olmalı.';return}
-      const user={username,email,role:isAdmin({username})?'admin':'user',createdAt:now()};
-      if(!write(USER_KEY,user)){msg.textContent='Bu tarayıcıda hesap bilgisi kaydedilemedi.';return}
-      if(isAdmin(user)){
-        remove(SUB_KEY);closeGate();addBadge(user,null);return;
-      }
-      renderPlans(user);
-    };
-  }
-
-  function renderPlans(user){
-    const g=gate();
-    g.innerHTML=`<div class="tx-sub-shell"><div class="tx-sub-head"><img class="tx-sub-logo" src="./tradex-ai-logo.webp?v=20260823-6" alt="TradeX AI"><div><div class="tx-sub-brand">TradeX <span>AI</span></div><div class="tx-sub-muted">Hoş geldin, ${user.username}</div></div></div><div class="tx-sub-title">Abonelik planını seç</div><div class="tx-sub-muted">Terminale erişim için aktif plan gerekir. Planı daha sonra değiştirebilirsin.</div><div class="tx-plans">${Object.values(plans).map(p=>`<div class="tx-plan ${p.popular?'popular':''}" data-plan="${p.id}"><h3>${p.name}</h3><div class="tx-sub-muted">${p.desc}</div><div class="tx-price">₺${p.price}<small>/ay</small></div><ul>${p.features.map(f=>`<li>${f}</li>`).join('')}</ul></div>`).join('')}</div><div class="tx-sub-actions"><button class="tx-sub-btn alt" id="txChangeUser">Kullanıcıyı değiştir</button><button class="tx-sub-btn" id="txStartSub" disabled>ABONELİĞİ BAŞLAT</button></div><div class="tx-admin-note">Şu anda ödeme tahsilatı bağlı değil. Bu ekran erişim/abonelik mantığını aktif eder; gerçek ödeme sağlayıcısı ayrıca bağlanmalıdır.</div><div id="txPlanMsg" class="tx-sub-msg"></div></div>`;
-    let selected='';
-    document.querySelectorAll('.tx-plan').forEach(el=>el.onclick=()=>{document.querySelectorAll('.tx-plan').forEach(x=>x.classList.remove('active'));el.classList.add('active');selected=el.dataset.plan;document.getElementById('txStartSub').disabled=false});
-    document.getElementById('txChangeUser').onclick=()=>{remove(USER_KEY);remove(SUB_KEY);renderRegister()};
-    document.getElementById('txStartSub').onclick=()=>{
-      const msg=document.getElementById('txPlanMsg');if(!selected){msg.textContent='Önce bir plan seç.';return}
-      const startedAt=now(),expiresAt=startedAt+30*24*60*60*1000;
-      const sub={status:'active',plan:selected,startedAt,expiresAt,paymentMode:'not_connected'};
-      if(!write(SUB_KEY,sub)){msg.textContent='Abonelik bilgisi kaydedilemedi.';return}
-      closeGate();addBadge(user,sub);
-    };
-  }
-
-  function boot(){
-    style();
-    const user=read(USER_KEY);
-    const sub=read(SUB_KEY);
-    if(!user){renderRegister();return}
-    if(isAdmin(user)){closeGate();addBadge(user,null);return}
-    if(!validSub(sub)){renderPlans(user);return}
-    closeGate();addBadge(user,sub);
-  }
-
+  function badge(u,s){document.getElementById('tradexSubBadge')?.remove();const b=document.createElement('div');b.id='tradexSubBadge';b.textContent=isAdmin(u)?'ADMIN • Abonelik muaf':`${plans[s?.plan]?.name||'Abonelik'} • Aktif`;document.body.appendChild(b)}
+  function renderRegister(){const g=gate();g.innerHTML=`<div class="tx-shell"><div class="tx-head"><img class="tx-logo" src="./tradex-ai-logo.webp"><div><b>TradeX AI</b><div class="tx-muted">Yeni kullanıcı erişimi</div></div></div><div class="tx-title">Hesabını oluştur</div><div class="tx-muted">Yeni kullanıcılar abonelikle erişir. Admin abonelikten muaftır.</div><div class="tx-form"><div class="tx-field"><label>Kullanıcı adı</label><input id="txUser" minlength="3"></div><div class="tx-field"><label>E-posta</label><input id="txEmail" type="email"></div></div><div class="tx-actions"><span></span><button class="tx-btn" id="txCreate">DEVAM ET</button></div><div id="txMsg" class="tx-msg"></div></div>`;document.getElementById('txCreate').onclick=()=>{const username=document.getElementById('txUser').value.trim(),email=document.getElementById('txEmail').value.trim(),m=document.getElementById('txMsg');if(!/^[A-Za-z0-9_.-]{3,32}$/.test(username)){m.textContent='Kullanıcı adı 3-32 karakter olmalı.';return}if(!email){m.textContent='E-posta gerekli.';return}const u={username,email,role:isAdmin({username})?'admin':'user',createdAt:Date.now()};write(USER_KEY,u);if(isAdmin(u)){closeGate();badge(u,null)}else renderPlans(u)}}
+  function renderPlans(u){const g=gate();g.innerHTML=`<div class="tx-shell"><div class="tx-head"><img class="tx-logo" src="./tradex-ai-logo.webp"><div><b>TradeX AI</b><div class="tx-muted">Hoş geldin, ${u.username}</div></div></div><div class="tx-title">Abonelik planını seç</div><div class="tx-plans">${Object.values(plans).map(p=>`<div class="tx-plan" data-plan="${p.id}"><h3>${p.name}</h3><div class="tx-muted">${p.desc}</div><div class="tx-price">₺${p.price}<small>/ay</small></div></div>`).join('')}</div><div class="tx-form"><div class="tx-field"><label>Ad</label><input id="txName"></div><div class="tx-field"><label>Soyad</label><input id="txSurname"></div><div class="tx-field"><label>Telefon</label><input id="txPhone" placeholder="+905..." inputmode="tel"></div><div class="tx-field"><label>T.C. Kimlik No</label><input id="txIdentity" inputmode="numeric" maxlength="11"></div><div class="tx-field"><label>Şehir</label><input id="txCity"></div><div class="tx-field"><label>Posta Kodu</label><input id="txZip"></div><div class="tx-field" style="grid-column:1/-1"><label>Fatura Adresi</label><input id="txAddress"></div></div><div class="tx-actions"><button class="tx-btn alt" id="txChange">Kullanıcıyı değiştir</button><button class="tx-btn" id="txPay" disabled>ÖDEMEYE GEÇ</button></div><div id="txPlanMsg" class="tx-msg"></div><div class="tx-note">Ödeme iyzico güvenli ödeme formu üzerinden alınır. Kart bilgileri TradeX AI tarafından kaydedilmez.</div></div>`;let selected='';document.querySelectorAll('.tx-plan').forEach(el=>el.onclick=()=>{document.querySelectorAll('.tx-plan').forEach(x=>x.classList.remove('active'));el.classList.add('active');selected=el.dataset.plan;document.getElementById('txPay').disabled=false});document.getElementById('txChange').onclick=()=>{remove(USER_KEY);remove(SUB_KEY);remove(ENT_KEY);renderRegister()};document.getElementById('txPay').onclick=async()=>{const m=document.getElementById('txPlanMsg');if(!selected){m.textContent='Plan seç.';return}const customer={name:document.getElementById('txName').value.trim(),surname:document.getElementById('txSurname').value.trim(),email:u.email,gsmNumber:document.getElementById('txPhone').value.trim(),identityNumber:document.getElementById('txIdentity').value.trim(),billingAddress:{address:document.getElementById('txAddress').value.trim(),zipCode:document.getElementById('txZip').value.trim(),contactName:`${document.getElementById('txName').value.trim()} ${document.getElementById('txSurname').value.trim()}`,city:document.getElementById('txCity').value.trim(),country:'Turkey'},shippingAddress:{address:document.getElementById('txAddress').value.trim(),zipCode:document.getElementById('txZip').value.trim(),contactName:`${document.getElementById('txName').value.trim()} ${document.getElementById('txSurname').value.trim()}`,city:document.getElementById('txCity').value.trim(),country:'Turkey'}};m.textContent='iyzico ödeme formu hazırlanıyor...';try{const d=await api('/billing/initialize',{method:'POST',body:JSON.stringify({plan:selected,customer})});g.innerHTML=`<div class="tx-shell"><div class="tx-title">Güvenli ödeme</div><div class="tx-muted">Ödemeyi tamamladıktan sonra aboneliğin otomatik doğrulanacak.</div><iframe class="tx-payframe" id="txPayFrame"></iframe></div>`;document.getElementById('txPayFrame').srcdoc=`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${d.checkoutFormContent}</body></html>`}catch(e){m.textContent=e.message||'Ödeme başlatılamadı.'}}}
+  async function handlePaymentReturn(){const q=new URLSearchParams(location.search);if(q.get('payment')!=='success')return false;const ent=q.get('entitlement');if(!ent)return false;try{const d=await api('/billing/verify',{method:'POST',body:JSON.stringify({entitlement:ent})});if(!d.active)return false;write(ENT_KEY,ent);write(SUB_KEY,d.subscription);history.replaceState({},'',location.pathname);const u=read(USER_KEY);closeGate();badge(u,d.subscription);return true}catch{return false}}
+  async function verifyStored(){const ent=localStorage.getItem(ENT_KEY);if(!ent)return null;try{const d=await api('/billing/verify',{method:'POST',body:JSON.stringify({entitlement:ent})});return d.active?d.subscription:null}catch{return null}}
+  async function boot(){style();if(await handlePaymentReturn())return;const u=read(USER_KEY);if(!u){renderRegister();return}if(isAdmin(u)){closeGate();badge(u,null);return}const stored=await verifyStored();if(stored&&validSub(stored)){write(SUB_KEY,stored);closeGate();badge(u,stored);return}remove(SUB_KEY);renderPlans(u)}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,250));else setTimeout(boot,250);
 })();
