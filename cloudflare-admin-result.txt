@@ -1,0 +1,2 @@
+status=failure
+stage=admin_secret_missing
