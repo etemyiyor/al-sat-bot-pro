@@ -23,22 +23,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify Cloudflare secrets
+      - name: Resolve Cloudflare credentials
         env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_TOKEN_SECRET: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_SECRET: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_TOKEN_VAR: ${{ vars.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_VAR: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          test -n "${CF_TOKEN:-}" || (echo "CLOUDFLARE_API_TOKEN is missing" && exit 1)
-          test -n "${CF_ACCOUNT:-}" || (echo "CLOUDFLARE_ACCOUNT_ID is missing" && exit 1)
-          echo "Cloudflare secrets are configured"
+          CF_TOKEN="${CF_TOKEN_SECRET:-${CF_TOKEN_VAR:-}}"
+          CF_ACCOUNT="${CF_ACCOUNT_SECRET:-${CF_ACCOUNT_VAR:-}}"
+          test -n "$CF_TOKEN" || (echo "CLOUDFLARE_API_TOKEN is missing in GitHub Secrets/Variables" && exit 1)
+          test -n "$CF_ACCOUNT" || (echo "CLOUDFLARE_ACCOUNT_ID is missing in GitHub Secrets/Variables" && exit 1)
+          echo "CLOUDFLARE_API_TOKEN=$CF_TOKEN" >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_ACCOUNT_ID=$CF_ACCOUNT" >> "$GITHUB_ENV"
+          echo "Cloudflare credentials are configured"
 
       - name: Provision D1 auth database
         working-directory: cloudflare-worker
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          DB_NAME: al-sat-bot-pro-auth
+          DB_NAME: tradex-ai-auth
         run: |
           set -euo pipefail
           npm exec --yes wrangler@latest -- d1 list --json > /tmp/d1.json
@@ -62,8 +66,8 @@ jobs:
         id: deploy
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: cloudflare-worker
           command: deploy --config wrangler.deploy.jsonc
 
