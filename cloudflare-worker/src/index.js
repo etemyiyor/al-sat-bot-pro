@@ -1,3 +1,5 @@
+import { handleBilling } from './billing.js';
+
 const ALLOWED_ORIGINS = new Set([
   'https://etemyiyor.github.io',
   'http://localhost:3000',
@@ -166,10 +168,7 @@ async function yahooChart(market, symbol, interval = '1d', limit = 200) {
   u.searchParams.set('includePrePost', 'false');
   u.searchParams.set('events', 'div,splits');
   const r = await fetch(u.toString(), {
-    headers: {
-      'Accept': 'application/json',
-      'User-Agent': 'Mozilla/5.0 TradeXAI/1.0'
-    },
+    headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 TradeXAI/1.0' },
     cf: { cacheTtl: 20, cacheEverything: false }
   });
   const data = await r.json().catch(() => null);
@@ -182,11 +181,8 @@ async function yahooChart(market, symbol, interval = '1d', limit = 200) {
   const ts = result.timestamp || [];
   let rows = ts.map((t, i) => ({
     time: new Date(t * 1000).toISOString(),
-    open: Number(q.open?.[i]),
-    high: Number(q.high?.[i]),
-    low: Number(q.low?.[i]),
-    close: Number(q.close?.[i]),
-    volume: Number(q.volume?.[i] || 0)
+    open: Number(q.open?.[i]), high: Number(q.high?.[i]), low: Number(q.low?.[i]),
+    close: Number(q.close?.[i]), volume: Number(q.volume?.[i] || 0)
   })).filter(x => Number.isFinite(x.close));
   rows = aggregateRows(rows, plan.aggregate);
   const lim = Math.max(2, Math.min(Number(limit) || 200, 500));
@@ -202,15 +198,13 @@ async function yahooQuote(market, symbol) {
   const prev = Number(meta.chartPreviousClose ?? meta.previousClose);
   const pct = Number.isFinite(prev) && prev !== 0 ? ((price - prev) / prev) * 100 : 0;
   return {
-    price,
-    change_percent: pct,
+    price, change_percent: pct,
     open: Number.isFinite(last.open) ? last.open : price,
     high: Number.isFinite(last.high) ? last.high : price,
     low: Number.isFinite(last.low) ? last.low : price,
     volume: Number(last.volume || 0),
     currency: meta.currency || (market === 'bist' ? 'TRY' : 'USD'),
-    exchange: meta.exchangeName || '',
-    source: 'Yahoo Finance / Cloudflare'
+    exchange: meta.exchangeName || '', source: 'Yahoo Finance / Cloudflare'
   };
 }
 
@@ -228,10 +222,7 @@ async function callMarketData(env, path, params = {}) {
     return data.data ?? data;
   }
   if (path === '/quote') return yahooQuote(params.market, params.symbol);
-  if (path === '/series') {
-    const { rows } = await yahooChart(params.market, params.symbol, params.interval, params.limit);
-    return rows;
-  }
+  if (path === '/series') { const { rows } = await yahooChart(params.market, params.symbol, params.interval, params.limit); return rows; }
   throw Object.assign(new Error('Desteklenmeyen piyasa veri isteği'), { status: 400 });
 }
 
@@ -239,23 +230,22 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, '') || '/';
-    const isApiPath = path === '/health' || path === '/quote' || path === '/series' || path.startsWith('/auth/');
+    const isApiPath = path === '/health' || path === '/quote' || path === '/series' || path.startsWith('/auth/') || path.startsWith('/billing/');
     if (!isApiPath) return env.ASSETS.fetch(request);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request) });
 
     try {
+      if (path.startsWith('/billing/')) return handleBilling(request, env, url);
+
       if (path === '/health') {
         return json(request, {
-          ok: true,
-          service: 'TradeX AI Worker',
-          marketDataReady: true,
+          ok: true, service: 'TradeX AI Worker', marketDataReady: true,
           marketDataSource: env.BLOOMBERG_UPSTREAM_URL ? 'configured-upstream' : 'yahoo-finance-fallback',
           upstreamConfigured: !!env.BLOOMBERG_UPSTREAM_URL,
-          authDatabaseConfigured: !!env.DB,
-          authMode: env.DB ? 'd1' : 'local',
-          apiAuthRequired: !!env.DB,
-          assets: true,
-          time: new Date().toISOString()
+          authDatabaseConfigured: !!env.DB, authMode: env.DB ? 'd1' : 'local', apiAuthRequired: !!env.DB,
+          billingProvider: 'iyzico',
+          billingConfigured: !!env.IYZICO_API_KEY && !!env.IYZICO_SECRET_KEY && !!env.IYZICO_PLAN_STARTER && !!env.IYZICO_PLAN_PRO && !!env.IYZICO_PLAN_BUSINESS,
+          assets: true, time: new Date().toISOString()
         });
       }
 
@@ -276,23 +266,18 @@ export default {
       }
 
       if (path === '/quote') {
-        const market = url.searchParams.get('market');
-        const symbol = url.searchParams.get('symbol');
+        const market = url.searchParams.get('market'), symbol = url.searchParams.get('symbol');
         if (!market || !symbol) return json(request, { ok: false, error: 'market ve symbol gerekli' }, 400);
         if (!['bist', 'us'].includes(market)) return json(request, { ok: false, error: 'Bu uç BIST/ABD içindir' }, 400);
-        const data = await callMarketData(env, '/quote', { market, symbol });
-        return json(request, { ok: true, data });
+        return json(request, { ok: true, data: await callMarketData(env, '/quote', { market, symbol }) });
       }
 
       if (path === '/series') {
-        const market = url.searchParams.get('market');
-        const symbol = url.searchParams.get('symbol');
-        const interval = url.searchParams.get('interval') || '1d';
-        const limit = url.searchParams.get('limit') || '200';
+        const market = url.searchParams.get('market'), symbol = url.searchParams.get('symbol');
+        const interval = url.searchParams.get('interval') || '1d', limit = url.searchParams.get('limit') || '200';
         if (!market || !symbol) return json(request, { ok: false, error: 'market ve symbol gerekli' }, 400);
         if (!['bist', 'us'].includes(market)) return json(request, { ok: false, error: 'Bu uç BIST/ABD içindir' }, 400);
-        const data = await callMarketData(env, '/series', { market, symbol, interval, limit });
-        return json(request, { ok: true, data });
+        return json(request, { ok: true, data: await callMarketData(env, '/series', { market, symbol, interval, limit }) });
       }
 
       return json(request, { ok: false, error: 'Not found' }, 404);
