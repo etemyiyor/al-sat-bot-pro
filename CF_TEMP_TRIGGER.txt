@@ -1,1 +1,1 @@
-Run temporary Cloudflare deploy for auth fallback fix — 2026-08-23 18:37 TRT.
+Deploy TradeX AI login fix 31.
