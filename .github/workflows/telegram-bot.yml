@@ -1,0 +1,61 @@
+name: Deploy Telegram Trading Bot
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "telegram-worker/**"
+      - ".github/workflows/telegram-bot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required secrets
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ALLOWED: ${{ secrets.TELEGRAM_ALLOWED_USER_IDS }}
+          TG_WEBHOOK: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          for n in CF_TOKEN CF_ACCOUNT TG_TOKEN TG_ALLOWED TG_WEBHOOK; do
+            if [ -z "${!n:-}" ]; then echo "Eksik GitHub secret: $n"; exit 1; fi
+          done
+      - name: Install Wrangler
+        run: npm install --global wrangler
+      - name: Set Worker secrets
+        working-directory: telegram-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_USER_IDS: ${{ secrets.TELEGRAM_ALLOWED_USER_IDS }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$TELEGRAM_BOT_TOKEN" | wrangler secret put TELEGRAM_BOT_TOKEN --config wrangler.jsonc
+          printf '%s' "$TELEGRAM_ALLOWED_USER_IDS" | wrangler secret put TELEGRAM_ALLOWED_USER_IDS --config wrangler.jsonc
+          printf '%s' "$TELEGRAM_WEBHOOK_SECRET" | wrangler secret put TELEGRAM_WEBHOOK_SECRET --config wrangler.jsonc
+      - name: Deploy Worker
+        working-directory: telegram-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: wrangler deploy --config wrangler.jsonc
+      - name: Set Telegram webhook
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          WORKER_URL="https://al-sat-telegram-bot.$CLOUDFLARE_ACCOUNT_SUBDOMAIN.workers.dev"
+          echo "Set WORKER_URL using the workers.dev hostname shown in the Deploy Worker step if your account uses a custom subdomain."
+          echo "For reliability, set the webhook manually with the exact deployed URL after the first deploy."
+          echo "The workflow deployed the Worker; webhook setup requires the exact Worker URL."
