@@ -1,0 +1,11 @@
+name = "al-sat-bot-pro-api"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "al-sat-bot-pro"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[vars]
+# Set ALLOWED_ORIGINS to the exact deployed frontend origin in Cloudflare.
