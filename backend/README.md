@@ -22,6 +22,7 @@ npx wrangler d1 execute al-sat-bot-pro --remote --file=./schema.sql
 En az 32 karakterli rastgele secret oluşturup Worker secret olarak ekle:
 ```sh
 npx wrangler secret put AUTH_SECRET
+npx wrangler secret put AI_API_KEY
 ```
 Cloudflare Worker ayarlarında ALLOWED_ORIGINS değişkenini yalnızca gerçek ön yüz origin'i ile ayarla. Örnek: https://example.com. Gereksiz wildcard kullanma.
 
